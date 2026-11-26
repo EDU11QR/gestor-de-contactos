@@ -1,7 +1,9 @@
 package com.gestordecontactos;
 
+import com.gestordecontactos.repository.UsuarioRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @SpringBootTest(properties = {
         "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
@@ -9,6 +11,9 @@ import org.springframework.boot.test.context.SpringBootTest;
                 + "org.springframework.boot.autoconfigure.session.SessionAutoConfiguration"
 })
 class GestorDeContactosApplicationTests {
+
+    @MockitoBean
+    private UsuarioRepository usuarioRepository;
 
     @Test
     void contextLoads() {

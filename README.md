@@ -20,11 +20,15 @@ Sistema web para administrar los contactos de clientes y proveedores de una pequ
 - JDK 21.
 - Maven 3.9 o superior.
 - MySQL 8.4.9.
-- Docker, opcional, para pruebas con Testcontainers.
+- Docker no es necesario: no se usa Testcontainers.
 
 ## Variables de entorno
 
-Copiar `.env.example` a `.env` y completar los valores locales. `.env` está ignorado por Git y no debe versionarse. No se almacenan credenciales reales en el repositorio.
+Copiar `.env.example` a `.env`, completar los valores locales y exportar las variables en la shell antes de ejecutar la aplicación. `.env` está ignorado por Git y no debe versionarse. No se almacenan credenciales reales en el repositorio.
+
+```bash
+set -a; . ./.env; set +a
+```
 
 Las variables disponibles son:
 
@@ -43,6 +47,9 @@ Las variables disponibles son:
 - `SERVER_SERVLET_SESSION_COOKIE_SAME_SITE`
 - `SERVER_FORWARD_HEADERS_STRATEGY`
 - `APP_PHOTOS_DIR`
+- `APP_PROVISIONING_EMAIL`
+- `APP_PROVISIONING_PASSWORD`
+- `APP_PROVISIONING_NOMBRE`
 
 ## Creación de base de datos
 
@@ -51,13 +58,14 @@ Crear un esquema MySQL y aplicar manualmente los scripts DDL previstos, en este 
 1. `db/ddl/V001__dominio_inicial.sql`
 2. `db/ddl/V002__sesiones_jdbc.sql`
 
-Los archivos SQL todavía no se han creado. La validación del esquema usa `spring.jpa.hibernate.ddl-auto=validate`.
+Los scripts ya están incluidos en el repositorio y deben aplicarse manualmente porque no se usa una herramienta de migraciones. La validación del esquema usa `spring.jpa.hibernate.ddl-auto=validate`.
 
 ## Ejecución
 
-Copiar `.env.example` a `.env`, completar los valores locales y ejecutar:
+Copiar `.env.example` a `.env`, completar los valores locales, exportar las variables y ejecutar:
 
 ```bash
+set -a; . ./.env; set +a
 mvn spring-boot:run
 ```
 
@@ -65,7 +73,9 @@ La aplicación queda disponible en `http://localhost:8080/`. La base de datos y 
 
 ## Usuario de prueba
 
-Pendiente de definición. No se publican credenciales reales en este repositorio.
+No hay credenciales reales en el repositorio. Para crear un usuario local, definir `APP_PROVISIONING_EMAIL`, `APP_PROVISIONING_PASSWORD` y `APP_PROVISIONING_NOMBRE` en `.env` antes de iniciar la aplicación. El aprovisionamiento normaliza el correo y guarda la contraseña con BCrypt. Si el usuario ya existe, no modifica su contraseña ni su nombre; no hay rotación automática de credenciales en esta fase.
+
+Si las variables están vacías, la aplicación inicia sin crear usuarios. El formulario de acceso está en `http://localhost:8080/login`. El cierre de sesión se realiza mediante `POST /logout` con token CSRF.
 
 ## Reglas de negocio
 
@@ -74,7 +84,8 @@ Pendiente de definición. No se publican credenciales reales en este repositorio
 - El DNI es peruano de 8 dígitos, único y sin checksum.
 - Las fotografías aceptan JPG, JPEG y PNG, con límite de 2 MB y 2000 × 2000 píxeles, validación de firma real y almacenamiento privado.
 - Las rutas privadas requieren autenticación, BCrypt, CSRF y sesiones persistentes con Spring Session JDBC.
-- La revocación de usuarios invalida sus sesiones.
+- `GET /` es pública y no contiene información privada; el formulario de logout se muestra solo a usuarios autenticados.
+- La revocación de usuarios está pendiente de implementación; cuando se implemente, deberá invalidar sus sesiones.
 
 ## Decisiones arquitectónicas
 
@@ -82,9 +93,20 @@ La arquitectura completa, el modelo de datos, la trazabilidad de hallazgos y las
 
 ## Pruebas
 
-Las pruebas planificadas usan JUnit 5 y Mockito, cubren reglas de negocio, persistencia, seguridad, sesiones y fotografías. Testcontainers se usará si Docker está disponible; en caso contrario se usará una instancia MySQL dedicada. H2 no sustituye a MySQL.
+### Implementadas y ejecutadas
 
-Para ejecutar la prueba básica de contexto:
+- Pruebas unitarias con JUnit 5 y Mockito: autenticación, normalización de correo, aprovisionamiento idempotente, borrado de credenciales y serialización del `SecurityContext`.
+- Pruebas HTTP con MockMvc y `spring-security-test`: CSRF positivo y negativo, login válido e inválido, normalización del correo, logout con invalidación de sesión y bloqueo de reutilización de la sesión anterior.
+- Prueba de integración real con Spring Session JDBC y MySQL 8.4.9 contra `gestor_contactos_test`: consulta `SPRING_SESSION_ATTRIBUTES.ATTRIBUTE_BYTES`, deserializa `SPRING_SECURITY_CONTEXT`, verifica ausencia del hash BCrypt y de la contraseña en texto plano, comprueba credenciales borradas, reutiliza la sesión en una segunda petición y verifica que la fila de sesión desaparece tras logout.
+
+### Pendientes
+
+- Reglas de negocio y restricciones de persistencia de contactos.
+- Validación de fotografías.
+- Caducidad de sesión y revocación de usuarios.
+- Manejo centralizado de violaciones de validación y restricciones de integridad.
+
+H2 y Testcontainers no se usan. Para ejecutar las pruebas, exporta `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` y `SPRING_DATASOURCE_PASSWORD` apuntando exactamente a `gestor_contactos_test`, con los scripts `V001` y `V002` aplicados, y luego ejecuta:
 
 ```bash
 mvn test

@@ -91,14 +91,16 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 ## 7. Seguridad y sesiones
 
 - Spring Security protege las rutas privadas.
+- `GET /` es pública y contiene solo información de presentación; no contiene información privada. El formulario de logout se muestra únicamente a usuarios autenticados.
 - Las contraseñas se almacenan con BCrypt.
 - CSRF permanece activo.
 - El logout se realiza con `POST` y CSRF, y afecta solo a la sesión actual.
 - La authority es la implícita `ROLE_USER`; no se persiste ni se confunde con roles de negocio.
 - El principal personalizado es `Serializable` e implementa `CredentialsContainer`, con `serialVersionUID` estable.
 - El hash BCrypt no permanece en el principal después de la autenticación.
-- Se verifica que el principal no serialize datos sensibles en `SPRING_SESSION_ATTRIBUTES`.
-- La revocación de usuarios invalida sus sesiones por `PRINCIPAL_NAME`.
+- Se verifica por prueba unitaria que el `SecurityContext` serializado no contiene el hash BCrypt ni la contraseña en texto plano.
+- La verificación real en `SPRING_SESSION_ATTRIBUTES` con Spring Session JDBC y MySQL 8.4.9 está cubierta por una prueba de integración ejecutada contra `gestor_contactos_test`.
+- La revocación de usuarios está pendiente de implementación; cuando se implemente, deberá invalidar sus sesiones por `PRINCIPAL_NAME`.
 - El email de usuario se normaliza con `trim` y `toLowerCase(Locale.ROOT)` al crear usuarios y al autenticar.
 - Las sesiones usan estos valores acordados:
   - `spring.session.store-type=jdbc`.
@@ -117,7 +119,8 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 
 - El aprovisionamiento de usuarios es idempotente y se ejecuta fuera de HTTP.
 - El aprovisionamiento usa un secreto de entorno y almacena contraseñas con BCrypt.
-- La revocación invalida las sesiones del usuario por `PRINCIPAL_NAME`.
+- El aprovisionamiento solo crea usuarios; no modifica contraseñas ni nombres existentes y no incluye rotación automática en esta fase.
+- La revocación está pendiente de implementación; cuando se implemente, deberá invalidar las sesiones del usuario por `PRINCIPAL_NAME`.
 - El email se normaliza con `trim` y `toLowerCase(Locale.ROOT)` al crear usuarios y al autenticar.
 - No se publica un registro público de usuarios ni credenciales reales en el repositorio.
 - El usuario de prueba queda pendiente de definición.
@@ -130,29 +133,35 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - `spring.jpa.hibernate.ddl-auto=validate`.
 - `dni` se mapea con `CHAR(8)` y tipo JDBC explícito o `columnDefinition`.
 - Si la validación con MySQL 8.4.9 falla, se usa la alternativa acordada `VARCHAR(8)` con `CHECK`.
-- La versión del servidor MySQL queda pendiente de verificación en el entorno de ejecución.
+- La versión del servidor MySQL usada en las pruebas es 8.4.9, verificada en la ejecución.
 
 ## 10. Pruebas
 
-- Las pruebas se prevén con JUnit 5 y Mockito; este documento no afirma que estén implementadas o ejecutadas.
-- Se prevén casos exitosos y fallidos de las reglas de negocio.
-- Se prevé la verificación de restricciones de persistencia, incluida la unicidad de DNI y emails.
-- Se prevé Testcontainers si Docker está disponible; si no, una instancia MySQL dedicada.
-- Docker no estaba disponible al momento de la auditoría de entorno, por lo que su disponibilidad queda pendiente de verificación.
-- H2 no se usa como sustituto de MySQL.
-- Se prevén pruebas de fotografía para formato, tamaño, firma real, rechazo de APNG, transacción, durabilidad y limpieza.
-- Se prevén pruebas de sesión para caducidad, cookie, CSRF, revocación y no serialización del hash en `SPRING_SESSION_ATTRIBUTES`.
-- M4 contempla el manejo de `ConstraintViolationException` y `DataIntegrityViolationException` en la cadena de causas, con pruebas de integración planificadas.
+### Implementadas y ejecutadas
+
+- Pruebas unitarias con JUnit 5 y Mockito: autenticación, normalización de correo, aprovisionamiento idempotente, borrado de credenciales y serialización del `SecurityContext`.
+- Pruebas HTTP con MockMvc y `spring-security-test`: CSRF positivo y negativo, login válido e inválido, normalización del correo, logout con invalidación de sesión y bloqueo de reutilización de la sesión anterior.
+- Prueba de integración real con Spring Session JDBC y MySQL 8.4.9 contra `gestor_contactos_test`: consulta `SPRING_SESSION_ATTRIBUTES.ATTRIBUTE_BYTES`, deserializa `SPRING_SECURITY_CONTEXT`, verifica la ausencia del hash y de la contraseña en texto plano, comprueba que las credenciales están borradas del principal y de `Authentication`, reutiliza la sesión en una segunda petición y verifica que la fila de sesión desaparece tras logout.
+- La prueba JDBC exige que el nombre exacto de la base de datos sea `gestor_contactos_test` y falla antes de conectarse si la URL falta o apunta a otra base.
+- H2 y Testcontainers no se usan. El daemon de Docker no responde en este entorno y no hay dependencia de Testcontainers.
+
+### Pendientes
+
+- Casos exitosos y fallidos de las reglas de negocio de contactos.
+- Verificación de restricciones de persistencia, incluida la unicidad de DNI y emails.
+- Validación de fotografías.
+- Pruebas de caducidad de sesión y revocación de usuarios.
+- M4: manejo de `ConstraintViolationException` y `DataIntegrityViolationException` en la cadena de causas, con pruebas de integración.
 
 ## 11. Trazabilidad de hallazgos
 
 | ID | Problema original | Solución acordada | Estado |
 |---|---|---|---|
-| A1 | Riesgo de aprovisionar y revocar usuarios sin idempotencia, fuera de un flujo HTTP seguro, con posible exposición de credenciales y sesiones vigentes tras la revocación. | Aprovisionamiento idempotente fuera de HTTP, secreto de entorno, contraseñas BCrypt y revocación con invalidación de sesiones por `PRINCIPAL_NAME`. | RESUELTO DOCUMENTALMENTE |
+| A1 | Riesgo de aprovisionar y revocar usuarios sin idempotencia, fuera de un flujo HTTP seguro, con posible exposición de credenciales y sesiones vigentes tras la revocación. | Aprovisionamiento idempotente fuera de HTTP, secreto de entorno y contraseñas BCrypt implementados; revocación con invalidación de sesiones por `PRINCIPAL_NAME` pendiente de implementación. | PARCIALMENTE IMPLEMENTADO; REVOCACIÓN PENDIENTE |
 | A2 | Riesgo de cuentas duplicadas o autenticación inconsistente por emails con distinta capitalización o espacios. | Normalización del email con `trim` y `toLowerCase(Locale.ROOT)` al crear usuarios y al autenticar. | RESUELTO DOCUMENTALMENTE |
 | A3 | Riesgo de persistir authorities o de confundir autoridad técnica con roles de negocio no previstos. | Authority implícita `ROLE_USER`, sin persistirla ni confundirla con roles de negocio. | RESUELTO DOCUMENTALMENTE |
 | A4 | Riesgo de operación parcial de contacto y fotografía si la escritura del archivo quedaba fuera de la transacción del servicio. | `ContactoService` centraliza la transacción; `FotoService` usa `MANDATORY`; se verifican transacción activa y sincronización; la compensación se registra antes de escribir en disco. | RESUELTO DOCUMENTALMENTE |
-| A5 | Riesgo de romper Spring Session o exponer el hash BCrypt al serializar el principal en la sesión. | Principal personalizado `Serializable` y `CredentialsContainer`, `serialVersionUID` estable, sin hash BCrypt tras autenticación y prueba de no serialización en `SPRING_SESSION_ATTRIBUTES`. | RESUELTO DOCUMENTALMENTE |
+| A5 | Riesgo de romper Spring Session o exponer el hash BCrypt al serializar el principal en la sesión. | Principal personalizado `Serializable` y `CredentialsContainer`, `serialVersionUID` estable, sin hash BCrypt tras autenticación y prueba ejecutada de no serialización en `SPRING_SESSION_ATTRIBUTES`. | RESUELTO Y VERIFICADO |
 | M1 | Ausencia de convención para DDL versionado y riesgo de derive automático del esquema. | Convención `db/ddl/V###__*.sql`, archivos `V001__dominio_inicial.sql` y `V002__sesiones_jdbc.sql`, aplicación manual ordenada, sin Flyway/Liquibase y `ddl-auto=validate`. | RESUELTO DOCUMENTALMENTE |
 | M2 | El registro de UUID en vuelo está en memoria y no se comparte entre instancias. | Documentar el despliegue monoinstancia como restricción arquitectónica, sin añadir dependencias. | RESUELTO DOCUMENTALMENTE |
 | M3 | Condición de carrera al reemplazar o eliminar la fotografía de un contacto. | Bloqueo `SELECT … FOR UPDATE`, reconsulta antes de borrar, gracia de 24 horas y despliegue monoinstancia. | RESUELTO DOCUMENTALMENTE |
@@ -170,4 +179,4 @@ El estado `RESUELTO DOCUMENTALMENTE` indica que la decisión de diseño está do
 - Longitudes exactas de columnas no documentadas.
 - Ruta exacta del directorio privado de fotografías.
 - Usuario de prueba, sin credenciales reales.
-- Versión efectiva del servidor MySQL y disponibilidad de Docker para Testcontainers.
+- Disponibilidad de Docker para Testcontainers no requerida en la etapa actual.
