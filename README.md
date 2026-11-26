@@ -55,7 +55,13 @@ Los archivos SQL todavía no se han creado. La validación del esquema usa `spri
 
 ## Ejecución
 
-El proyecto todavía no incluye `pom.xml` ni código Java, por lo que no es ejecutable en este momento. La ejecución quedará definida cuando se cree la configuración Maven aprobada.
+Copiar `.env.example` a `.env`, completar los valores locales y ejecutar:
+
+```bash
+mvn spring-boot:run
+```
+
+La aplicación queda disponible en `http://localhost:8080/`. La base de datos y las tablas de sesión deben existir previamente porque `ddl-auto=validate`.
 
 ## Usuario de prueba
 
@@ -78,7 +84,11 @@ La arquitectura completa, el modelo de datos, la trazabilidad de hallazgos y las
 
 Las pruebas planificadas usan JUnit 5 y Mockito, cubren reglas de negocio, persistencia, seguridad, sesiones y fotografías. Testcontainers se usará si Docker está disponible; en caso contrario se usará una instancia MySQL dedicada. H2 no sustituye a MySQL.
 
-Los comandos de ejecución de pruebas quedarán disponibles cuando se cree `pom.xml`.
+Para ejecutar la prueba básica de contexto:
+
+```bash
+mvn test
+```
 
 ## Uso de agentes de IA
 
