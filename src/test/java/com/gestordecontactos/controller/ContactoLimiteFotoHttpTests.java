@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -144,6 +145,42 @@ class ContactoLimiteFotoHttpTests {
     }
 
     @Test
+    void fotoSuperiorAlLimiteEnEdicionVuelveAlFormularioDeEdicion() throws IOException {
+        dni = dniNuevo();
+        String archivo = UUID.randomUUID() + ".png";
+        Files.createDirectories(directorioFotos());
+        Files.write(directorioFotos().resolve(archivo), pngBase());
+        jdbcTemplate.update(
+                "INSERT INTO contactos "
+                        + "(dni, tipo_contacto, nombres, apellidos, foto_archivo, "
+                        + "foto_content_type, foto_tamano_bytes) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                dni, "CLIENTE", "Ana", "Pérez", archivo, "image/png", 512);
+        Long id = jdbcTemplate.queryForObject(
+                "SELECT id_contacto FROM contactos WHERE dni = ?", Long.class, dni);
+        assertNotNull(id);
+        jdbcTemplate.update("INSERT INTO telefonos (id_contacto, numero) VALUES (?, ?)",
+                id, "+51987654321");
+        jdbcTemplate.update("INSERT INTO correos_electronicos (id_contacto, direccion) VALUES (?, ?)",
+                id, "ana@ejemplo.com");
+        Sesion sesion = autenticarse();
+
+        ResponseEntity<String> respuesta = actualizar(sesion, id, pngConTamano(MAX_BYTES + 1024));
+
+        assertEquals(HttpStatus.OK, respuesta.getStatusCode());
+        String cuerpo = respuesta.getBody();
+        assertNotNull(cuerpo);
+        assertTrue(cuerpo.contains("Editar contacto"));
+        assertTrue(cuerpo.contains("/contactos/" + id + "/editar"));
+        assertTrue(cuerpo.contains("La fotografía no puede superar 2 MB"));
+        assertTrue(cuerpo.contains("_csrf"));
+        assertFalse(cuerpo.contains("Registrar contacto"));
+        assertFalse(cuerpo.contains("MaxUploadSizeExceededException"));
+        assertEquals(archivo, jdbcTemplate.queryForObject(
+                "SELECT foto_archivo FROM contactos WHERE id_contacto = ?", String.class, id));
+    }
+
+    @Test
     void solicitudMultipartSinCsrfEsRechazada() throws IOException {
         dni = dniNuevo();
         Sesion sesion = autenticarse();
@@ -216,6 +253,30 @@ class ContactoLimiteFotoHttpTests {
         }
         return restTemplate.postForEntity(
                 "/contactos", new HttpEntity<>(cuerpo, cabeceras), String.class);
+    }
+
+    private ResponseEntity<String> actualizar(Sesion sesion, Long id, byte[] foto) {
+        ByteArrayResource archivo = new ByteArrayResource(foto) {
+            @Override
+            public String getFilename() {
+                return "foto.png";
+            }
+        };
+
+        MultiValueMap<String, Object> cuerpo = new LinkedMultiValueMap<>();
+        cuerpo.add("nombres", "Ana Editada");
+        cuerpo.add("apellidos", "Pérez");
+        cuerpo.add("dni", dni);
+        cuerpo.add("tipoContacto", "PROVEEDOR");
+        cuerpo.add("telefonos[0].numero", "987654321");
+        cuerpo.add("correosElectronicos[0].direccion", "ana-" + dni + "@ejemplo.com");
+        cuerpo.add("foto", archivo);
+
+        HttpHeaders cabeceras = new HttpHeaders();
+        cabeceras.add(HttpHeaders.COOKIE, cookie(COOKIE_SESION, sesion.cookie()));
+        cabeceras.add("X-CSRF-TOKEN", sesion.token());
+        return restTemplate.postForEntity(
+                "/contactos/" + id + "/editar", new HttpEntity<>(cuerpo, cabeceras), String.class);
     }
 
     private String extraerCsrf(String html) {

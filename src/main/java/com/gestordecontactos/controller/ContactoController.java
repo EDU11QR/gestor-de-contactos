@@ -2,6 +2,7 @@ package com.gestordecontactos.controller;
 
 import com.gestordecontactos.dto.ContactoBusquedaForm;
 import com.gestordecontactos.dto.ContactoDetalleDto;
+import com.gestordecontactos.dto.ContactoEdicionForm;
 import com.gestordecontactos.dto.ContactoForm;
 import com.gestordecontactos.dto.CorreoForm;
 import com.gestordecontactos.dto.TelefonoForm;
@@ -70,6 +71,35 @@ public class ContactoController {
         return "contactos/nuevo";
     }
 
+    @GetMapping("/{id}/editar")
+    public String editar(@PathVariable Long id, Model model) {
+        prepararFormularioEdicion(model, id, contactoService.obtenerFormularioEdicion(id));
+        return "contactos/editar";
+    }
+
+    @PostMapping("/{id}/editar")
+    public String actualizar(@PathVariable Long id,
+            @Valid @ModelAttribute("form") ContactoEdicionForm form,
+            BindingResult resultado, Model model, RedirectAttributes redirectAttributes) {
+        if (resultado.hasErrors()) {
+            prepararFormularioEdicion(model, id, form);
+            return "contactos/editar";
+        }
+
+        try {
+            contactoService.actualizar(id, form);
+            redirectAttributes.addFlashAttribute("actualizado", true);
+            return "redirect:/contactos/" + id;
+        } catch (DniDuplicadoException ex) {
+            resultado.rejectValue("dni", "dni.duplicado", "Ya existe un contacto con ese DNI");
+        } catch (FotoInvalidaException ex) {
+            resultado.rejectValue("foto", "foto.invalida", ex.getMessage());
+        }
+
+        prepararFormularioEdicion(model, id, form);
+        return "contactos/editar";
+    }
+
     @GetMapping("/{id}")
     public String detalle(@PathVariable Long id, Model model) {
         ContactoDetalleDto contacto = contactoService.obtenerDetalle(id);
@@ -78,6 +108,18 @@ public class ContactoController {
     }
 
     private void prepararFormulario(Model model, ContactoForm form) {
+        if (form.getTelefonos().isEmpty()) {
+            form.getTelefonos().add(new TelefonoForm(""));
+        }
+        if (form.getCorreosElectronicos().isEmpty()) {
+            form.getCorreosElectronicos().add(new CorreoForm(""));
+        }
+        model.addAttribute("form", form);
+        model.addAttribute("tipos", TipoContacto.values());
+    }
+
+    private void prepararFormularioEdicion(Model model, Long id, ContactoEdicionForm form) {
+        model.addAttribute("id", id);
         if (form.getTelefonos().isEmpty()) {
             form.getTelefonos().add(new TelefonoForm(""));
         }

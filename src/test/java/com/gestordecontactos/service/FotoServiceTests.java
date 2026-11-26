@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.gestordecontactos.config.FotoProperties;
 import com.gestordecontactos.exception.FotoInvalidaException;
@@ -40,12 +42,14 @@ class FotoServiceTests {
     Path directorio;
 
     private FotoService service;
+    private FotoReferenciaService referenciaService;
 
     @BeforeEach
     void inicializar() {
         FotoProperties properties = new FotoProperties();
         properties.setDir(directorio);
-        service = new FotoService(properties);
+        referenciaService = mock(FotoReferenciaService.class);
+        service = new FotoService(properties, referenciaService);
         TransactionSynchronizationManager.initSynchronization();
         TransactionSynchronizationManager.setActualTransactionActive(true);
     }
@@ -170,7 +174,7 @@ class FotoServiceTests {
 
         FotoProperties properties = new FotoProperties();
         properties.setDir(directorioSoloLectura);
-        FotoService servicioConFallo = new FotoService(properties);
+        FotoService servicioConFallo = new FotoService(properties, referenciaService);
         try {
             FotoInvalidaException ex = assertThrows(FotoInvalidaException.class,
                     () -> servicioConFallo.guardar(multipart(png(10, 10), "image/png")));
@@ -186,6 +190,37 @@ class FotoServiceTests {
         } finally {
             Files.setPosixFilePermissions(directorioSoloLectura, permisosOriginales);
         }
+    }
+
+    @Test
+    void eliminaFotoAnteriorSoloSiLaTransaccionSeConfirma() throws IOException {
+        Path anterior = directorio.resolve("anterior.png");
+        Files.write(anterior, png(10, 10));
+        when(referenciaService.estaReferenciada("anterior.png")).thenReturn(false);
+
+        service.eliminarTrasConfirmacion("anterior.png");
+
+        new ArrayList<>(TransactionSynchronizationManager.getSynchronizations())
+                .forEach(sincronizacion -> sincronizacion.afterCompletion(
+                        TransactionSynchronization.STATUS_ROLLED_BACK));
+        assertTrue(Files.exists(anterior));
+
+        new ArrayList<>(TransactionSynchronizationManager.getSynchronizations())
+                .forEach(TransactionSynchronization::afterCommit);
+        assertFalse(Files.exists(anterior));
+    }
+
+    @Test
+    void noEliminaFotoAnteriorSiSigueReferenciada() throws IOException {
+        Path anterior = directorio.resolve("anterior.png");
+        Files.write(anterior, png(10, 10));
+        when(referenciaService.estaReferenciada("anterior.png")).thenReturn(true);
+
+        service.eliminarTrasConfirmacion("anterior.png");
+
+        new ArrayList<>(TransactionSynchronizationManager.getSynchronizations())
+                .forEach(TransactionSynchronization::afterCommit);
+        assertTrue(Files.exists(anterior));
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.gestordecontactos.service;
 
 import com.gestordecontactos.dto.ContactoBusquedaForm;
 import com.gestordecontactos.dto.ContactoDetalleDto;
+import com.gestordecontactos.dto.ContactoEdicionForm;
 import com.gestordecontactos.dto.ContactoForm;
 import com.gestordecontactos.dto.ContactoListadoDto;
 import com.gestordecontactos.dto.CorreoForm;
@@ -94,6 +95,81 @@ public class ContactoService {
                 contacto.getCorreosElectronicos().stream().map(CorreoElectronico::getDireccion).toList(),
                 contacto.getFotoContentType(),
                 contacto.getFotoTamanoBytes());
+    }
+
+    @Transactional(readOnly = true)
+    public ContactoEdicionForm obtenerFormularioEdicion(Long id) {
+        Contacto contacto = contactoRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Contacto no encontrado"));
+
+        ContactoEdicionForm form = new ContactoEdicionForm();
+        form.setNombres(contacto.getNombres());
+        form.setApellidos(contacto.getApellidos());
+        form.setDni(contacto.getDni());
+        form.setTipoContacto(TipoContacto.valueOf(contacto.getTipoContacto()));
+        for (Telefono telefono : contacto.getTelefonos()) {
+            form.getTelefonos().add(new TelefonoForm(telefono.getNumero()));
+        }
+        for (CorreoElectronico correo : contacto.getCorreosElectronicos()) {
+            form.getCorreosElectronicos().add(new CorreoForm(correo.getDireccion()));
+        }
+        return form;
+    }
+
+    @Transactional
+    public void actualizar(Long id, ContactoEdicionForm form) {
+        Contacto contacto = contactoRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Contacto no encontrado"));
+
+        String dni = form.getDni().trim();
+        if (!dni.equals(contacto.getDni()) && contactoRepository.existsByDniAndIdNot(dni, id)) {
+            throw new DniDuplicadoException(dni);
+        }
+
+        String archivoAnterior = contacto.getFotoArchivo();
+        FotoService.FotoGuardada foto = null;
+        if (form.getFoto() != null && !form.getFoto().isEmpty()) {
+            foto = fotoService.guardar(form.getFoto());
+        }
+
+        contacto.setDni(dni);
+        contacto.setTipoContacto(form.getTipoContacto().name());
+        contacto.setNombres(form.getNombres().trim());
+        contacto.setApellidos(form.getApellidos().trim());
+        if (foto != null) {
+            contacto.setFotoArchivo(foto.nombreArchivo());
+            contacto.setFotoContentType(foto.contentType());
+            contacto.setFotoTamanoBytes(foto.tamanoBytes());
+        }
+
+        contacto.getTelefonos().clear();
+        contacto.getCorreosElectronicos().clear();
+        contactoRepository.flush();
+
+        for (TelefonoForm telefonoForm : form.getTelefonos()) {
+            Telefono telefono = new Telefono();
+            telefono.setNumero(normalizarTelefono(telefonoForm.getNumero()));
+            contacto.addTelefono(telefono);
+        }
+        for (CorreoForm correoForm : form.getCorreosElectronicos()) {
+            CorreoElectronico correo = new CorreoElectronico();
+            correo.setDireccion(correoForm.getDireccion().trim().toLowerCase(Locale.ROOT));
+            contacto.addCorreoElectronico(correo);
+        }
+
+        try {
+            contactoRepository.saveAndFlush(contacto);
+        } catch (DataIntegrityViolationException ex) {
+            if (esDniDuplicado(ex)) {
+                throw new DniDuplicadoException(dni);
+            }
+            throw ex;
+        }
+
+        if (foto != null && !archivoAnterior.equals(contacto.getFotoArchivo())
+                && !contactoRepository.existsByFotoArchivo(archivoAnterior)) {
+            fotoService.eliminarTrasConfirmacion(archivoAnterior);
+        }
     }
 
     @Transactional(readOnly = true)

@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
@@ -42,9 +43,11 @@ public class FotoService {
     private static final Logger LOGGER = LoggerFactory.getLogger(FotoService.class);
 
     private final Path directorio;
+    private final FotoReferenciaService referenciaService;
 
-    public FotoService(FotoProperties properties) {
+    public FotoService(FotoProperties properties, FotoReferenciaService referenciaService) {
         this.directorio = properties.getDir().toAbsolutePath().normalize();
+        this.referenciaService = referenciaService;
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -116,6 +119,48 @@ public class FotoService {
         }
 
         return new FotoGuardada(nombreArchivo, contentType, bytes.length);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void eliminarTrasConfirmacion(String nombreArchivo) {
+        if (nombreArchivo == null || nombreArchivo.isBlank()) {
+            throw new IllegalArgumentException("El nombre de la fotografía no es válido");
+        }
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            throw new IllegalStateException("FotoService requiere una transacción activa");
+        }
+
+        Path destino;
+        try {
+            Path nombre = Path.of(nombreArchivo);
+            if (nombre.getFileName() == null
+                    || !nombre.getFileName().toString().equals(nombreArchivo)) {
+                throw new IllegalArgumentException("La ruta de la fotografía no es válida");
+            }
+            destino = directorio.resolve(nombre).normalize();
+        } catch (InvalidPathException ex) {
+            throw new IllegalArgumentException("La ruta de la fotografía no es válida", ex);
+        }
+        if (!destino.startsWith(directorio)) {
+            throw new IllegalArgumentException("La ruta de la fotografía no es válida");
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    if (!referenciaService.estaReferenciada(nombreArchivo)) {
+                        Files.deleteIfExists(destino);
+                    }
+                } catch (RuntimeException ex) {
+                    LOGGER.warn("No se pudo verificar la referencia de la fotografía anterior {}",
+                            nombreArchivo, ex);
+                } catch (IOException ex) {
+                    LOGGER.warn("No se pudo eliminar la fotografía anterior {}", nombreArchivo, ex);
+                }
+            }
+        });
     }
 
     private String detectarContentType(byte[] bytes) {
