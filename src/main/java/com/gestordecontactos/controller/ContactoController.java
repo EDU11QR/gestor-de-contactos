@@ -1,5 +1,6 @@
 package com.gestordecontactos.controller;
 
+import com.gestordecontactos.dto.ContactoBusquedaForm;
 import com.gestordecontactos.dto.ContactoDetalleDto;
 import com.gestordecontactos.dto.ContactoForm;
 import com.gestordecontactos.dto.CorreoForm;
@@ -27,6 +28,18 @@ public class ContactoController {
 
     public ContactoController(ContactoService contactoService) {
         this.contactoService = contactoService;
+    }
+
+    @GetMapping
+    public String listar(@ModelAttribute("filtro") ContactoBusquedaForm filtro, Model model) {
+        try {
+            model.addAttribute("pagina", contactoService.listar(filtro));
+        } catch (IllegalArgumentException ex) {
+            model.addAttribute("errorFiltro", ex.getMessage());
+            model.addAttribute("pagina", contactoService.listar(new ContactoBusquedaForm()));
+        }
+        model.addAttribute("tipos", TipoContacto.values());
+        return "contactos/listado";
     }
 
     @GetMapping("/nuevo")

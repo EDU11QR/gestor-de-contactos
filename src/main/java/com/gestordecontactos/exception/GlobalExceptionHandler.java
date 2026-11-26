@@ -26,6 +26,13 @@ public class GlobalExceptionHandler {
                 .body("Los datos del contacto violan una restricción de integridad.");
     }
 
+    @ExceptionHandler(RecursoNoEncontradoException.class)
+    public ModelAndView recursoNoEncontrado() {
+        ModelAndView modelo = new ModelAndView("contactos/no-encontrado");
+        modelo.setStatus(HttpStatus.NOT_FOUND);
+        return modelo;
+    }
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ModelAndView tamanoFotoExcedido() {
         return formularioConErrorFoto();

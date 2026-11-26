@@ -11,6 +11,7 @@
     <h1>Gestor de Contactos</h1>
     <p>Aplicación inicial configurada con Spring Boot, Java 21 y Maven.</p>
     <div th:if="${autenticado}" class="d-flex gap-2">
+        <a class="btn btn-outline-primary" th:href="@{/contactos}">Ver contactos</a>
         <a class="btn btn-primary" th:href="@{/contactos/nuevo}">Registrar contacto</a>
         <form th:action="@{/logout}" method="post">
             <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">

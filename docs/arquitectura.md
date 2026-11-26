@@ -45,7 +45,7 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - Las tablas hijas se eliminan en cascada al eliminar el contacto.
 - El `usuario` no es propietario de los contactos; no existe la noción de contactos por usuario.
 - La clasificación de un contacto es `CLIENTE`, `PROVEEDOR` o `AMBOS`.
-- Un contacto `AMBOS` aparece en los listados de clientes y de proveedores.
+- Un contacto `AMBOS` aparece en los listados de clientes y de proveedores, y solo en el filtro `AMBOS` cuando se solicita exclusivamente esa clasificación.
 
 ### 3.4 Identidad y unicidad
 
@@ -63,6 +63,20 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - Se valida la presencia de datos obligatorios antes de persistir.
 - Se valida y sanitiza la entrada en el servidor.
 - Las longitudes aplicadas son: nombres y apellidos hasta 255 caracteres, dirección de correo hasta 255 caracteres, número de teléfono hasta 50 caracteres y DNI exacto de 8 caracteres.
+
+### 4.1 Etapa 2 implementada
+
+- `GET /contactos` está protegido y muestra el listado sin exponer entidades JPA.
+- `ContactoBusquedaForm` transporta `termino`, `tipo`, `page` y `size`; el controlador solo enlaza el formulario con el servicio.
+- `ContactoService` normaliza y valida la entrada: recorta el término, rechaza más de 100 caracteres, escapa `%`, `_` y `\`, y traduce la clasificación a `TipoContacto`.
+- La búsqueda es parcial e insensible a mayúsculas sobre nombres, apellidos y DNI.
+- El filtro por clasificación agrupa `CLIENTE` con `AMBOS` y `PROVEEDOR` con `AMBOS`; el filtro `AMBOS` excluye los otros tipos.
+- La paginación usa `Page` con tamaño por defecto 10 y valores permitidos 10, 20 y 50; `page < 0` se normaliza a 0 y `size` no permitido a 10.
+- El orden es fijo: `apellidos ASC`, `nombres ASC`, `id ASC`. No existe parámetro de orden libre.
+- `ContactoRepository.buscarContactos` usa una sola consulta JPQL con agrupación explícita de búsqueda y clasificación.
+- `ContactoListadoDto` contiene solo `id`, nombres, apellidos, DNI y clasificación; no carga teléfonos, correos ni rutas de fotografías.
+- Las vistas `contactos/listado` y `contactos/no-encontrado` muestran los resultados y el 404 controlado sin detalles internos.
+- No se añadió DDL, ni orden por parámetro libre, ni preservación de filtros desde el detalle.
 
 ## 5. Fotografías
 
@@ -161,11 +175,15 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - Pruebas unitarias de la Etapa 1: validación de `ContactoForm`, normalización, persistencia y traducción de DNI duplicado por restricción única en `ContactoService`, y validación real, firma, MIME, dimensiones preventivas, APNG estructural, PNG con secuencia `acTL` en metadatos, límites, transacción, rollback, fallos de escritura y compensación en `FotoService`.
 - Prueba HTTP/integración de la Etapa 1 contra `gestor_contactos_test`: autenticación, CSRF positivo y negativo, alta válida con PRG y detalle, archivo en directorio privado, DNI duplicado, fotografía inválida y restricción de unicidad en base de datos.
 - Pruebas HTTP reales contra el servidor embebido para el límite multipart: aceptación de una fotografía válida cercana a 2 MB, rechazo controlado por encima de 2 MB y rechazo de una solicitud sin token CSRF.
+- Pruebas de la Etapa 2: unitarias de normalización y validación en `ContactoService`, de integración de `ContactoRepository.buscarContactos` contra `gestor_contactos_test` y HTTP con MockMvc para autenticación, búsqueda, filtros, paginación, resultados vacíos, detalle existente y 404 controlado.
+- Pruebas de normalización de `page` y `size` no numéricos en `ContactoService` y HTTP con MockMvc.
+- Pruebas de integración de `%`, `_` y `\` literales en `ContactoRepository.buscarContactos` contra `gestor_contactos_test`.
+- Ejecución final: `BUILD SUCCESS`, 81 pruebas ejecutadas, 0 fallos y 0 errores.
 - H2 y Testcontainers no se usan. El daemon de Docker no responde en este entorno y no hay dependencia de Testcontainers.
 
 ### Pruebas pendientes
 
-- Ninguna para el alcance implementado en la Etapa 1.
+- Ninguna para el alcance implementado en las Etapas 1 y 2.
 
 ## 11. Trazabilidad de hallazgos
 
@@ -178,19 +196,20 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 | A5 | Riesgo de romper Spring Session o exponer el hash BCrypt al serializar el principal en la sesión. | Principal personalizado `Serializable` y `CredentialsContainer`, `serialVersionUID` estable, sin hash BCrypt tras autenticación y prueba ejecutada de no serialización en `SPRING_SESSION_ATTRIBUTES`. | RESUELTO Y VERIFICADO |
 | M1 | Ausencia de convención para DDL versionado y riesgo de derive automático del esquema. | Convención `db/ddl/V###__*.sql`, archivos `V001__dominio_inicial.sql` y `V002__sesiones_jdbc.sql`, aplicación manual ordenada, sin Flyway/Liquibase y `ddl-auto=validate`. | RESUELTO DOCUMENTALMENTE |
 | M2 | El registro de UUID en vuelo está en memoria y no se comparte entre instancias. | Documentar el despliegue monoinstancia como restricción arquitectónica, sin añadir dependencias. | RESUELTO DOCUMENTALMENTE |
-| M3 | Condición de carrera al reemplazar o eliminar la fotografía de un contacto. | Bloqueo `SELECT … FOR UPDATE`, reconsulta antes de borrar, gracia de 24 horas prevista y despliegue monoinstancia. | RESUELTO DOCUMENTALMENTE |
+| M3 | Condición de carrera al reemplazar o eliminar la fotografía de un contacto. | Bloqueo `SELECT … FOR UPDATE`, reconsulta antes de borrar, despliegue monoinstancia y gracia de 24 horas como medida de contención, sin política de retención definida ni reconciliación automatizada. | RESUELTO DOCUMENTALMENTE |
 | M4 | Ausencia de una estrategia centralizada para traducir violaciones de validación y restricciones de integridad, incluidas causas anidadas. | `GlobalExceptionHandler` traduce `DataIntegrityViolationException` directo y `ContactoService` traduce la unicidad de DNI a error de campo; la búsqueda genérica en cadena de causas y `ConstraintViolationException` quedan pendientes. | PARCIALMENTE IMPLEMENTADO |
 | M5 | Posible discrepancia en el nombre real de la cookie y configuración Secure detrás de proxy TLS. | Fijar `GESTOR_SESSION` como nombre de cookie y configurar `server.forward-headers-strategy=framework` cuando exista proxy inverso TLS. | RESUELTO DOCUMENTALMENTE |
 | M6 | Incompatibilidad potencial del mapeo `CHAR(8)` con Hibernate `validate` en MySQL 8.4.9. | `CHAR(8)` con mapeo JDBC explícito o `columnDefinition`, verificación en MySQL 8.4.9 y alternativa `VARCHAR(8)` con `CHECK`. | RESUELTO DOCUMENTALMENTE |
 | M7 | Riesgo de pérdida del archivo de fotografía antes del movimiento atómico. | `FileChannel.force(true)` sobre el archivo temporal antes del movimiento atómico, cubierto por pruebas unitarias. | IMPLEMENTADO Y VERIFICADO |
+| M8 | Posible exposición de mensajes técnicos del contenedor al superar el límite multipart. | El exceso vuelve al formulario de alta con un error de campo estático, sin mensajes del contenedor; cubierto por pruebas HTTP reales. | RESUELTO Y VERIFICADO |
 
 El estado `RESUELTO DOCUMENTALMENTE` indica que la decisión de diseño está documentada; no implica que exista código Java o pruebas ejecutadas.
 
 ## 12. Decisiones pendientes de aclaración o implementación
 
 - Implementación completa de M4: traducción genérica de causas anidadas de `DataIntegrityViolationException` y de `ConstraintViolationException`.
-- Listado, edición y eliminación de contactos.
-- Reemplazo y eliminación de fotografías con las reglas M3, incluida la reconciliación de archivos huérfanos con gracia de 24 horas.
+- Edición y eliminación de contactos.
+- Reemplazo y eliminación de fotografías con las reglas M3, sin reconciliación automatizada de archivos huérfanos ni política de retención definida.
 - Caducidad operativa y revocación de usuarios con invalidación de sesiones.
 - Usuario de prueba, sin credenciales reales.
 - Disponibilidad de Docker para Testcontainers no requerida en la etapa actual.

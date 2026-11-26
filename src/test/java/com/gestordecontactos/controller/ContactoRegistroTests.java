@@ -54,7 +54,7 @@ import org.springframework.transaction.annotation.Transactional;
 @ContextConfiguration(initializers = ContactoRegistroTests.VerificarBaseDeDatosDePrueba.class)
 @AutoConfigureMockMvc
 @Transactional
-class ContactoRegistroTests {
+public class ContactoRegistroTests {
 
     private static final AtomicInteger SECUENCIA = new AtomicInteger();
 
@@ -208,7 +208,7 @@ class ContactoRegistroTests {
         return salida.toByteArray();
     }
 
-    static class VerificarBaseDeDatosDePrueba
+    public static class VerificarBaseDeDatosDePrueba
             implements ApplicationContextInitializer<ConfigurableApplicationContext> {
 
         @Override

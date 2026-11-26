@@ -92,6 +92,11 @@ Si las variables están vacías, la aplicación inicia sin crear usuarios. El fo
 - Las rutas privadas requieren autenticación, BCrypt, CSRF y sesiones persistentes con Spring Session JDBC.
 - `GET /` es pública y no contiene información privada; el formulario de logout se muestra solo a usuarios autenticados.
 - La revocación de usuarios, cuando se implemente, deberá invalidar sus sesiones.
+- El listado protegido `GET /contactos` busca de forma parcial e insensible a mayúsculas en nombres, apellidos y DNI; recorta espacios, escapa comodines y limita el término a 100 caracteres.
+- Los filtros por clasificación respetan que un contacto `AMBOS` aparece en los listados de `CLIENTE` y `PROVEEDOR`, mientras que el filtro `AMBOS` muestra solo esos contactos.
+- El listado pagina con tamaño por defecto 10 y valores permitidos 10, 20 y 50; una página negativa se normaliza a 0 y un tamaño inválido a 10. El orden es fijo por apellidos, nombres e id.
+- El listado usa `ContactoListadoDto` y no carga teléfonos, correos ni fotografías.
+- Un detalle inexistente responde HTTP 404 con una vista controlada y sin detalles internos.
 
 ## Decisiones arquitectónicas
 
@@ -99,10 +104,12 @@ La arquitectura completa, el modelo de datos, la trazabilidad de hallazgos y las
 
 La Etapa 1 añade `ContactoController`, `ContactoService`, `FotoService`, `ContactoRepository`, DTOs de entrada/salida, `FotoProperties`, un handler mínimo de integridad y las vistas `contactos/nuevo` y `contactos/detalle`. `ContactoService` es el único punto transaccional del flujo; `FotoService` usa propagación `MANDATORY`, verifica la transacción activa y registra la compensación antes de escribir. No se añadieron dependencias.
 
+La Etapa 2 añade el listado protegido. `ContactoBusquedaForm` transporta filtros y paginación; `ContactoService` normaliza y valida la entrada, aplica paginación y orden fijos y convierte a `ContactoListadoDto`; `ContactoRepository` ejecuta una única consulta JPQL con agrupación explícita de búsqueda y clasificación; `ContactoController` solo enlaza el formulario con el servicio. La vista `contactos/listado` muestra únicamente las columnas acordadas y conserva filtros en la paginación. Se añade una vista `contactos/no-encontrado` para 404 controlado. No se modificaron autenticación, CSRF, entidades, DDL ni dependencias.
+
 ## Funcionalidades pendientes
 
-- Listado, edición y eliminación de contactos.
-- Reemplazo y eliminación de fotografías, incluida la reconciliación futura de archivos huérfanos con gracia de 24 horas.
+- Edición y eliminación de contactos.
+- Reemplazo y eliminación de fotografías; la reconciliación automatizada de archivos huérfanos está pendiente y no existe una política de retención definida.
 - Caducidad operativa y revocación de usuarios con invalidación de sesiones.
 - M4 completo: traducción genérica de causas anidadas de `DataIntegrityViolationException` y de `ConstraintViolationException`. La unicidad de DNI ya se traduce a error de campo.
 
@@ -110,18 +117,9 @@ El detalle de decisiones y trazabilidad está en `docs/arquitectura.md`.
 
 ## Pruebas
 
-### Implementadas y ejecutadas
+### Resumen
 
-- Pruebas unitarias con JUnit 5 y Mockito: autenticación, normalización de correo, aprovisionamiento idempotente, borrado de credenciales y serialización del `SecurityContext`.
-- Pruebas HTTP con MockMvc y `spring-security-test`: CSRF positivo y negativo, login válido e inválido, normalización del correo, logout con invalidación de sesión y bloqueo de reutilización de la sesión anterior.
-- Prueba de integración real con Spring Session JDBC y MySQL 8.4.9 contra `gestor_contactos_test`: consulta `SPRING_SESSION_ATTRIBUTES.ATTRIBUTE_BYTES`, deserializa `SPRING_SECURITY_CONTEXT`, verifica ausencia del hash BCrypt y de la contraseña en texto plano, comprueba credenciales borradas, reutiliza la sesión en una segunda petición y verifica que la fila de sesión desaparece tras logout.
-- Pruebas unitarias de la Etapa 1: validación de DNI, teléfono, correo, listas y fotografía obligatoria; normalización, persistencia y traducción de DNI duplicado por restricción única en `ContactoService`; validación real de imágenes, firma, MIME, dimensiones preventivas, detección estructural de APNG, PNG con secuencia `acTL` en metadatos, tamaño, transacción, rollback, fallos de escritura y compensación en `FotoService`.
-- Prueba HTTP/integración de la Etapa 1 contra `gestor_contactos_test`: autenticación, CSRF positivo y negativo, alta válida con PRG y detalle, archivo en directorio privado, DNI duplicado, fotografía inválida y restricción de unicidad en base de datos.
-- Pruebas HTTP reales contra el servidor embebido que ejercitan el resolver multipart: una fotografía válida cercana a 2 MB llega al registro, una fotografía superior a 2 MB vuelve al formulario con error controlado y una solicitud sin token CSRF es rechazada.
-
-### Pruebas pendientes
-
-- Ninguna para el alcance implementado en la Etapa 1.
+La cobertura incluye autenticación, CSRF, sesiones JDBC, alta y detalle de contactos, validación de fotografías, listado, búsqueda, filtros, paginación, caracteres comodín literales y 404 controlado. La relación detallada de pruebas y decisiones está en [`docs/arquitectura.md`](docs/arquitectura.md).
 
 H2 y Testcontainers no se usan. Para ejecutar las pruebas, exporta `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` y `SPRING_DATASOURCE_PASSWORD` apuntando exactamente a `gestor_contactos_test`, define `APP_PHOTOS_DIR` en una ruta temporal privada, deja vacías las variables de aprovisionamiento y ejecuta:
 
