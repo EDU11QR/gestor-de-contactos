@@ -84,7 +84,7 @@ Si las variables están vacías, la aplicación inicia sin crear usuarios. El fo
 ## Reglas de negocio
 
 - Los contactos pueden ser clientes, proveedores o ambos.
-- Cada contacto tiene nombres, apellidos, DNI, uno o varios teléfonos, uno o varios correos y fotografía obligatoria.
+- Cada contacto tiene nombres, apellidos, DNI, uno o varios teléfonos, uno o varios correos y fotografía. La fotografía es obligatoria en el alta; en la edición puede dejarse vacía para conservar la existente.
 - El DNI es peruano de 8 dígitos, único y sin checksum; la unicidad se comprueba antes de guardar y una carrera contra el `INSERT` se muestra como error de campo DNI.
 - El teléfono se valida con `^(?:\+51|51)?9\d{8}$` y se normaliza a `+51XXXXXXXXX`; el correo se valida con `@Email` y se normaliza a minúsculas.
 - Las fotografías aceptan JPG, JPEG y PNG, con límite de 2 MB por archivo y 2000 × 2000 píxeles, validación preventiva de dimensiones, firma real, rechazo estructural de APNG y almacenamiento privado. La solicitud completa admite hasta 3 MB; un archivo mayor a 2 MB se devuelve al formulario con un error controlado.
@@ -97,6 +97,13 @@ Si las variables están vacías, la aplicación inicia sin crear usuarios. El fo
 - El listado pagina con tamaño por defecto 10 y valores permitidos 10, 20 y 50; una página negativa se normaliza a 0 y un tamaño inválido a 10. El orden es fijo por apellidos, nombres e id.
 - El listado usa `ContactoListadoDto` y no carga teléfonos, correos ni fotografías.
 - Un detalle inexistente responde HTTP 404 con una vista controlada y sin detalles internos.
+- La edición usa `GET /contactos/{id}/editar` y `POST /contactos/{id}/editar`; ambas rutas son privadas y el POST exige token CSRF.
+- `GET /contactos/{id}/editar` precarga todos los teléfonos, correos y datos del contacto; la vista permite agregar y quitar filas sin perder las no modificadas, mantiene al menos una de cada tipo y reindexa los nombres antes de enviar; un id inexistente responde 404 controlado.
+- El DNI se puede conservar o cambiar, pero no puede repetirse entre contactos; la validación excluye el propio contacto y traduce la violación de unicidad a error de campo.
+- En la edición se validan todos los campos con las mismas reglas del alta; teléfonos y correos se normalizan y se reemplazan en bloque.
+- Si no se adjunta nueva fotografía se conserva la anterior. Si se adjunta, se valida con las mismas reglas del alta, se escribe con compensación y la fotografía anterior se elimina solo después de confirmar la transacción y revalidar en una transacción nueva que no esté referenciada.
+- Un error multipart, incluido el exceso de 2 MB, distingue alta de edición: en edición vuelve a `contactos/editar` con el id y los datos precargados.
+- La edición bloquea la fila del contacto mediante `SELECT … FOR UPDATE` para reducir el riesgo de actualizaciones concurrentes. No se implementa eliminación de contactos.
 
 ## Decisiones arquitectónicas
 
@@ -106,10 +113,12 @@ La Etapa 1 añade `ContactoController`, `ContactoService`, `FotoService`, `Conta
 
 La Etapa 2 añade el listado protegido. `ContactoBusquedaForm` transporta filtros y paginación; `ContactoService` normaliza y valida la entrada, aplica paginación y orden fijos y convierte a `ContactoListadoDto`; `ContactoRepository` ejecuta una única consulta JPQL con agrupación explícita de búsqueda y clasificación; `ContactoController` solo enlaza el formulario con el servicio. La vista `contactos/listado` muestra únicamente las columnas acordadas y conserva filtros en la paginación. Se añade una vista `contactos/no-encontrado` para 404 controlado. No se modificaron autenticación, CSRF, entidades, DDL ni dependencias.
 
+La Etapa 3 añade la edición protegida. `ContactoEdicionForm` reutiliza las validaciones del alta pero permite dejar la fotografía vacía para conservar la anterior; `ContactoService` carga la entidad con bloqueo pesimista, valida la unicidad del DNI excluyendo el propio id, normaliza teléfonos y correos, reemplaza las colecciones hijas y coordina la fotografía. `ContactoRepository` aporta las consultas de unicidad y bloqueo; `FotoService` añade el borrado de la fotografía anterior en `afterCommit`, manteniendo la compensación de escritura existente. `FotoReferenciaService` revalida las referencias con `REQUIRES_NEW` antes de borrar. `GlobalExceptionHandler` distingue el exceso multipart en alta y edición. `ContactoController` solo enlaza el formulario con el servicio y la vista `contactos/editar` precarga y reindexa todas las filas. No se añadieron entidades, DDL, migraciones ni dependencias.
+
 ## Funcionalidades pendientes
 
-- Edición y eliminación de contactos.
-- Reemplazo y eliminación de fotografías; la reconciliación automatizada de archivos huérfanos está pendiente y no existe una política de retención definida.
+- Eliminación de contactos.
+- Eliminación de fotografías al borrar contactos; la reconciliación automatizada de archivos huérfanos está pendiente y no existe una política de retención definida.
 - Caducidad operativa y revocación de usuarios con invalidación de sesiones.
 - M4 completo: traducción genérica de causas anidadas de `DataIntegrityViolationException` y de `ConstraintViolationException`. La unicidad de DNI ya se traduce a error de campo.
 
@@ -119,7 +128,7 @@ El detalle de decisiones y trazabilidad está en `docs/arquitectura.md`.
 
 ### Resumen
 
-La cobertura incluye autenticación, CSRF, sesiones JDBC, alta y detalle de contactos, validación de fotografías, listado, búsqueda, filtros, paginación, caracteres comodín literales y 404 controlado. La relación detallada de pruebas y decisiones está en [`docs/arquitectura.md`](docs/arquitectura.md).
+La cobertura incluye autenticación, CSRF, sesiones JDBC, alta, detalle y edición de contactos, edición y eliminación de múltiples filas de teléfonos y correos, conservación y reemplazo de fotografías, revalidación de referencias antes del borrado, rollback real por violación de integridad, errores multipart en alta y edición, validación de fotografías, listado, búsqueda, filtros, paginación, caracteres comodín literales y 404 controlado. La relación detallada de pruebas y decisiones está en [`docs/arquitectura.md`](docs/arquitectura.md).
 
 H2 y Testcontainers no se usan. Para ejecutar las pruebas, exporta `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` y `SPRING_DATASOURCE_PASSWORD` apuntando exactamente a `gestor_contactos_test`, define `APP_PHOTOS_DIR` en una ruta temporal privada, deja vacías las variables de aprovisionamiento y ejecuta:
 
@@ -128,6 +137,8 @@ unset APP_PROVISIONING_EMAIL APP_PROVISIONING_PASSWORD APP_PROVISIONING_NOMBRE
 export APP_PHOTOS_DIR="${TMPDIR:-/tmp}/gestor-contactos-test-fotos"
 mvn test
 ```
+
+Resultado verificado: `BUILD SUCCESS`, 105 pruebas ejecutadas, 0 fallos y 0 errores.
 
 ## Uso de agentes de IA
 
