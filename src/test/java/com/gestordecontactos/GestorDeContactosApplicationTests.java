@@ -1,5 +1,6 @@
 package com.gestordecontactos;
 
+import com.gestordecontactos.repository.ContactoRepository;
 import com.gestordecontactos.repository.UsuarioRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,6 +15,9 @@ class GestorDeContactosApplicationTests {
 
     @MockitoBean
     private UsuarioRepository usuarioRepository;
+
+    @MockitoBean
+    private ContactoRepository contactoRepository;
 
     @Test
     void contextLoads() {

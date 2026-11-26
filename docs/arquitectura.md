@@ -59,16 +59,17 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 
 - Todo contacto debe tener nombres, apellidos, DNI, al menos un teléfono, al menos un correo electrónico y fotografía.
 - El DNI debe tener 8 dígitos y ser único.
-- Los formatos de teléfono y correo se validan en el servidor. El patrón exacto no está documentado y queda pendiente de aclaración.
+- Los formatos de teléfono y correo se validan en el servidor. El patrón de teléfono es `^(?:\+51|51)?9\d{8}$` y se normaliza a `+51XXXXXXXXX`; el correo usa `@Email`.
 - Se valida la presencia de datos obligatorios antes de persistir.
 - Se valida y sanitiza la entrada en el servidor.
-- La longitud exacta de columnas distintas de `dni` no está documentada y queda pendiente de aclaración.
+- Las longitudes aplicadas son: nombres y apellidos hasta 255 caracteres, dirección de correo hasta 255 caracteres, número de teléfono hasta 50 caracteres y DNI exacto de 8 caracteres.
 
 ## 5. Fotografías
 
 - La fotografía es obligatoria.
 - Formatos aceptados: JPG, JPEG y PNG.
-- Tamaño máximo: 2 MB.
+- Tamaño máximo: 2 MB por archivo.
+- El límite HTTP se configura con `spring.servlet.multipart.max-file-size=2MB` y `spring.servlet.multipart.max-request-size=3MB`; el límite efectivo de la fotografía es de 2 MB y coincide con `FotoService`.
 - Dimensiones máximas: 2000 × 2000 píxeles.
 - Se valida la firma real del archivo y se decodifica con `ImageIO` / `ImageReader`.
 - APNG se rechaza explícitamente.
@@ -78,6 +79,18 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - El nombre de archivo es único en `contactos`.
 - El contenido multimedia no se sirve desde una ruta pública de recursos estáticos.
 
+### 5.1 Etapa 1 implementada
+
+- El alta se realiza en `POST /contactos` con `multipart/form-data` y token CSRF.
+- El formulario está en `GET /contactos/nuevo` y usa `ContactoForm` con listas anidadas de teléfono y correo.
+- La confirmación usa PRG: `POST /contactos` redirige a `GET /contactos/{id}`.
+- `ContactoService.crear` verifica DNI duplicado, normaliza teléfono y correo, delega la fotografía y persiste la entidad.
+- `ContactoService.obtenerDetalle` devuelve `ContactoDetalleDto`; no expone entidades JPA ni información de almacenamiento a la vista.
+- La validación de fotografías comprueba firma y MIME reales, dimensiones antes de decodificar y chunks PNG para rechazar APNG.
+- El directorio privado se configura con `app.fotos.dir=${APP_PHOTOS_DIR}` y no se publica como recurso estático.
+- `GlobalExceptionHandler` traduce `DataIntegrityViolationException` a HTTP 409 sin exponer SQL ni detalles internos.
+- Un exceso del límite multipart se devuelve al formulario de alta con un error de campo estático; no se exponen mensajes del contenedor ni de la excepción.
+
 ## 6. Transacciones
 
 - `ContactoService` es el único punto transaccional de la operación de contactos.
@@ -85,7 +98,6 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - Antes de operar, se verifica `isActualTransactionActive()` e `isSynchronizationActive()`.
 - La compensación de escritura se registra antes de escribir el archivo en disco.
 - La eliminación de la foto anterior se hace dentro de la misma operación transaccional, con `SELECT … FOR UPDATE` y reconsulta antes de borrar.
-- Se aplica un período de gracia de reconciliación de 24 horas para archivos huérfanos.
 - El despliegue previsto es monoinstancia.
 
 ## 7. Seguridad y sesiones
@@ -100,7 +112,7 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - El hash BCrypt no permanece en el principal después de la autenticación.
 - Se verifica por prueba unitaria que el `SecurityContext` serializado no contiene el hash BCrypt ni la contraseña en texto plano.
 - La verificación real en `SPRING_SESSION_ATTRIBUTES` con Spring Session JDBC y MySQL 8.4.9 está cubierta por una prueba de integración ejecutada contra `gestor_contactos_test`.
-- La revocación de usuarios está pendiente de implementación; cuando se implemente, deberá invalidar sus sesiones por `PRINCIPAL_NAME`.
+- Cuando se implemente la revocación de usuarios, deberá invalidar sus sesiones por `PRINCIPAL_NAME`.
 - El email de usuario se normaliza con `trim` y `toLowerCase(Locale.ROOT)` al crear usuarios y al autenticar.
 - Las sesiones usan estos valores acordados:
   - `spring.session.store-type=jdbc`.
@@ -120,10 +132,10 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - El aprovisionamiento de usuarios es idempotente y se ejecuta fuera de HTTP.
 - El aprovisionamiento usa un secreto de entorno y almacena contraseñas con BCrypt.
 - El aprovisionamiento solo crea usuarios; no modifica contraseñas ni nombres existentes y no incluye rotación automática en esta fase.
-- La revocación está pendiente de implementación; cuando se implemente, deberá invalidar las sesiones del usuario por `PRINCIPAL_NAME`.
+- Cuando se implemente la revocación, deberá invalidar las sesiones del usuario por `PRINCIPAL_NAME`.
 - El email se normaliza con `trim` y `toLowerCase(Locale.ROOT)` al crear usuarios y al autenticar.
 - No se publica un registro público de usuarios ni credenciales reales en el repositorio.
-- El usuario de prueba queda pendiente de definición.
+- No se publica un usuario de prueba con credenciales reales en el repositorio.
 
 ## 9. DDL y configuración
 
@@ -131,6 +143,9 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - Los archivos previstos son `db/ddl/V001__dominio_inicial.sql` y `db/ddl/V002__sesiones_jdbc.sql`.
 - El DDL se aplica manualmente y en orden; no se usa Flyway ni Liquibase.
 - `spring.jpa.hibernate.ddl-auto=validate`.
+- `app.fotos.dir=${APP_PHOTOS_DIR}`; no se define un valor por defecto público.
+- `spring.servlet.multipart.max-file-size=2MB` y `spring.servlet.multipart.max-request-size=3MB`; el límite por archivo es de 2 MB.
+- Las pruebas de contactos fijan `app.fotos.dir` en la carpeta temporal del sistema y exigen `gestor_contactos_test`.
 - `dni` se mapea con `CHAR(8)` y tipo JDBC explícito o `columnDefinition`.
 - Si la validación con MySQL 8.4.9 falla, se usa la alternativa acordada `VARCHAR(8)` con `CHECK`.
 - La versión del servidor MySQL usada en las pruebas es 8.4.9, verificada en la ejecución.
@@ -143,15 +158,14 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - Pruebas HTTP con MockMvc y `spring-security-test`: CSRF positivo y negativo, login válido e inválido, normalización del correo, logout con invalidación de sesión y bloqueo de reutilización de la sesión anterior.
 - Prueba de integración real con Spring Session JDBC y MySQL 8.4.9 contra `gestor_contactos_test`: consulta `SPRING_SESSION_ATTRIBUTES.ATTRIBUTE_BYTES`, deserializa `SPRING_SECURITY_CONTEXT`, verifica la ausencia del hash y de la contraseña en texto plano, comprueba que las credenciales están borradas del principal y de `Authentication`, reutiliza la sesión en una segunda petición y verifica que la fila de sesión desaparece tras logout.
 - La prueba JDBC exige que el nombre exacto de la base de datos sea `gestor_contactos_test` y falla antes de conectarse si la URL falta o apunta a otra base.
+- Pruebas unitarias de la Etapa 1: validación de `ContactoForm`, normalización, persistencia y traducción de DNI duplicado por restricción única en `ContactoService`, y validación real, firma, MIME, dimensiones preventivas, APNG estructural, PNG con secuencia `acTL` en metadatos, límites, transacción, rollback, fallos de escritura y compensación en `FotoService`.
+- Prueba HTTP/integración de la Etapa 1 contra `gestor_contactos_test`: autenticación, CSRF positivo y negativo, alta válida con PRG y detalle, archivo en directorio privado, DNI duplicado, fotografía inválida y restricción de unicidad en base de datos.
+- Pruebas HTTP reales contra el servidor embebido para el límite multipart: aceptación de una fotografía válida cercana a 2 MB, rechazo controlado por encima de 2 MB y rechazo de una solicitud sin token CSRF.
 - H2 y Testcontainers no se usan. El daemon de Docker no responde en este entorno y no hay dependencia de Testcontainers.
 
-### Pendientes
+### Pruebas pendientes
 
-- Casos exitosos y fallidos de las reglas de negocio de contactos.
-- Verificación de restricciones de persistencia, incluida la unicidad de DNI y emails.
-- Validación de fotografías.
-- Pruebas de caducidad de sesión y revocación de usuarios.
-- M4: manejo de `ConstraintViolationException` y `DataIntegrityViolationException` en la cadena de causas, con pruebas de integración.
+- Ninguna para el alcance implementado en la Etapa 1.
 
 ## 11. Trazabilidad de hallazgos
 
@@ -160,23 +174,23 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 | A1 | Riesgo de aprovisionar y revocar usuarios sin idempotencia, fuera de un flujo HTTP seguro, con posible exposición de credenciales y sesiones vigentes tras la revocación. | Aprovisionamiento idempotente fuera de HTTP, secreto de entorno y contraseñas BCrypt implementados; revocación con invalidación de sesiones por `PRINCIPAL_NAME` pendiente de implementación. | PARCIALMENTE IMPLEMENTADO; REVOCACIÓN PENDIENTE |
 | A2 | Riesgo de cuentas duplicadas o autenticación inconsistente por emails con distinta capitalización o espacios. | Normalización del email con `trim` y `toLowerCase(Locale.ROOT)` al crear usuarios y al autenticar. | RESUELTO DOCUMENTALMENTE |
 | A3 | Riesgo de persistir authorities o de confundir autoridad técnica con roles de negocio no previstos. | Authority implícita `ROLE_USER`, sin persistirla ni confundirla con roles de negocio. | RESUELTO DOCUMENTALMENTE |
-| A4 | Riesgo de operación parcial de contacto y fotografía si la escritura del archivo quedaba fuera de la transacción del servicio. | `ContactoService` centraliza la transacción; `FotoService` usa `MANDATORY`; se verifican transacción activa y sincronización; la compensación se registra antes de escribir en disco. | RESUELTO DOCUMENTALMENTE |
+| A4 | Riesgo de operación parcial de contacto y fotografía si la escritura del archivo quedaba fuera de la transacción del servicio. | `ContactoService` centraliza la transacción; `FotoService` usa `MANDATORY`, verificación de transacción activa y sincronización; la compensación se registra antes de escribir en disco. | IMPLEMENTADO Y VERIFICADO PARA EL ALTA; REEMPLAZO Y ELIMINACIÓN PENDIENTES |
 | A5 | Riesgo de romper Spring Session o exponer el hash BCrypt al serializar el principal en la sesión. | Principal personalizado `Serializable` y `CredentialsContainer`, `serialVersionUID` estable, sin hash BCrypt tras autenticación y prueba ejecutada de no serialización en `SPRING_SESSION_ATTRIBUTES`. | RESUELTO Y VERIFICADO |
 | M1 | Ausencia de convención para DDL versionado y riesgo de derive automático del esquema. | Convención `db/ddl/V###__*.sql`, archivos `V001__dominio_inicial.sql` y `V002__sesiones_jdbc.sql`, aplicación manual ordenada, sin Flyway/Liquibase y `ddl-auto=validate`. | RESUELTO DOCUMENTALMENTE |
 | M2 | El registro de UUID en vuelo está en memoria y no se comparte entre instancias. | Documentar el despliegue monoinstancia como restricción arquitectónica, sin añadir dependencias. | RESUELTO DOCUMENTALMENTE |
-| M3 | Condición de carrera al reemplazar o eliminar la fotografía de un contacto. | Bloqueo `SELECT … FOR UPDATE`, reconsulta antes de borrar, gracia de 24 horas y despliegue monoinstancia. | RESUELTO DOCUMENTALMENTE |
-| M4 | Ausencia de una estrategia centralizada para traducir violaciones de validación y restricciones de integridad, incluidas causas anidadas, sin pruebas de integración previstas. | Manejo de `ConstraintViolationException` y `DataIntegrityViolationException` en la cadena de causas, con pruebas de integración. | PENDIENTE DE IMPLEMENTACIÓN |
+| M3 | Condición de carrera al reemplazar o eliminar la fotografía de un contacto. | Bloqueo `SELECT … FOR UPDATE`, reconsulta antes de borrar, gracia de 24 horas prevista y despliegue monoinstancia. | RESUELTO DOCUMENTALMENTE |
+| M4 | Ausencia de una estrategia centralizada para traducir violaciones de validación y restricciones de integridad, incluidas causas anidadas. | `GlobalExceptionHandler` traduce `DataIntegrityViolationException` directo y `ContactoService` traduce la unicidad de DNI a error de campo; la búsqueda genérica en cadena de causas y `ConstraintViolationException` quedan pendientes. | PARCIALMENTE IMPLEMENTADO |
 | M5 | Posible discrepancia en el nombre real de la cookie y configuración Secure detrás de proxy TLS. | Fijar `GESTOR_SESSION` como nombre de cookie y configurar `server.forward-headers-strategy=framework` cuando exista proxy inverso TLS. | RESUELTO DOCUMENTALMENTE |
 | M6 | Incompatibilidad potencial del mapeo `CHAR(8)` con Hibernate `validate` en MySQL 8.4.9. | `CHAR(8)` con mapeo JDBC explícito o `columnDefinition`, verificación en MySQL 8.4.9 y alternativa `VARCHAR(8)` con `CHECK`. | RESUELTO DOCUMENTALMENTE |
-| M7 | Riesgo de pérdida del archivo de fotografía antes del movimiento atómico. | `FileChannel.force(true)` sobre el archivo temporal antes del movimiento atómico. | RESUELTO DOCUMENTALMENTE |
+| M7 | Riesgo de pérdida del archivo de fotografía antes del movimiento atómico. | `FileChannel.force(true)` sobre el archivo temporal antes del movimiento atómico, cubierto por pruebas unitarias. | IMPLEMENTADO Y VERIFICADO |
 
 El estado `RESUELTO DOCUMENTALMENTE` indica que la decisión de diseño está documentada; no implica que exista código Java o pruebas ejecutadas.
 
 ## 12. Decisiones pendientes de aclaración o implementación
 
-- Implementación de M4.
-- Patrón exacto de validación de teléfonos y correos electrónicos.
-- Longitudes exactas de columnas no documentadas.
-- Ruta exacta del directorio privado de fotografías.
+- Implementación completa de M4: traducción genérica de causas anidadas de `DataIntegrityViolationException` y de `ConstraintViolationException`.
+- Listado, edición y eliminación de contactos.
+- Reemplazo y eliminación de fotografías con las reglas M3, incluida la reconciliación de archivos huérfanos con gracia de 24 horas.
+- Caducidad operativa y revocación de usuarios con invalidación de sesiones.
 - Usuario de prueba, sin credenciales reales.
 - Disponibilidad de Docker para Testcontainers no requerida en la etapa actual.

@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.gestordecontactos.entity.Usuario;
+import com.gestordecontactos.repository.ContactoRepository;
 import com.gestordecontactos.repository.UsuarioRepository;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,9 @@ class AutenticacionHttpTests {
 
     @MockitoBean
     private UsuarioRepository usuarioRepository;
+
+    @MockitoBean
+    private ContactoRepository contactoRepository;
 
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 

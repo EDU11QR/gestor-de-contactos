@@ -1,6 +1,10 @@
 spring:
   application:
     name: gestor-contactos
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 3MB
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/gestor_contactos?serverTimezone=UTC}
     username: ${SPRING_DATASOURCE_USERNAME}
@@ -33,3 +37,5 @@ app:
     email: ${APP_PROVISIONING_EMAIL:}
     password: ${APP_PROVISIONING_PASSWORD:}
     nombre: ${APP_PROVISIONING_NOMBRE:}
+  fotos:
+    dir: ${APP_PHOTOS_DIR}

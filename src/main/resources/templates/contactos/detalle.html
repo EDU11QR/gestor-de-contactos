@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Detalle del contacto</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.9/css/bootstrap.min.css}">
+</head>
+<body class="container py-5">
+<main class="mx-auto" style="max-width: 48rem;">
+    <div class="alert alert-success" th:if="${registrado}">Contacto registrado correctamente.</div>
+
+    <h1 class="h3 mb-4">Detalle del contacto</h1>
+
+    <dl class="row">
+        <dt class="col-sm-4">Nombres</dt>
+        <dd class="col-sm-8" th:text="${contacto.nombres}"></dd>
+
+        <dt class="col-sm-4">Apellidos</dt>
+        <dd class="col-sm-8" th:text="${contacto.apellidos}"></dd>
+
+        <dt class="col-sm-4">DNI</dt>
+        <dd class="col-sm-8" th:text="${contacto.dni}"></dd>
+
+        <dt class="col-sm-4">Tipo</dt>
+        <dd class="col-sm-8" th:text="${contacto.tipoContacto}"></dd>
+
+        <dt class="col-sm-4">Teléfono</dt>
+        <dd class="col-sm-8">
+            <span th:each="telefono : ${contacto.telefonos}" th:text="${telefono}"></span>
+        </dd>
+
+        <dt class="col-sm-4">Correo electrónico</dt>
+        <dd class="col-sm-8">
+            <span th:each="correo : ${contacto.correosElectronicos}" th:text="${correo}"></span>
+        </dd>
+
+        <dt class="col-sm-4">Fotografía</dt>
+        <dd class="col-sm-8"
+            th:text="${contacto.fotoContentType} + ' (' + ${contacto.fotoTamanoBytes} + ' bytes)'"></dd>
+    </dl>
+
+    <a class="btn btn-primary" th:href="@{/}">Volver al inicio</a>
+</main>
+<script th:src="@{/webjars/bootstrap/5.3.9/js/bootstrap.bundle.min.js}"></script>
+</body>
+</html>

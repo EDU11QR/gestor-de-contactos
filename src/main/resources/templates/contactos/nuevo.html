@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Registrar contacto</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.9/css/bootstrap.min.css}">
+</head>
+<body class="container py-5">
+<main class="mx-auto" style="max-width: 48rem;">
+    <h1 class="h3 mb-4">Registrar contacto</h1>
+
+    <form th:action="@{/contactos}" th:object="${form}" method="post" enctype="multipart/form-data">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+
+        <div class="mb-3">
+            <label class="form-label" for="nombres">Nombres</label>
+            <input class="form-control" id="nombres" th:field="*{nombres}" required>
+            <div class="text-danger" th:if="${#fields.hasErrors('nombres')}" th:errors="*{nombres}"></div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="apellidos">Apellidos</label>
+            <input class="form-control" id="apellidos" th:field="*{apellidos}" required>
+            <div class="text-danger" th:if="${#fields.hasErrors('apellidos')}" th:errors="*{apellidos}"></div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="dni">DNI</label>
+            <input class="form-control" id="dni" th:field="*{dni}" inputmode="numeric" maxlength="8" required>
+            <div class="text-danger" th:if="${#fields.hasErrors('dni')}" th:errors="*{dni}"></div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="tipoContacto">Tipo de contacto</label>
+            <select class="form-select" id="tipoContacto" th:field="*{tipoContacto}" required>
+                <option value="">Seleccione...</option>
+                <option th:each="tipo : ${tipos}" th:value="${tipo}" th:text="${tipo}">CLIENTE</option>
+            </select>
+            <div class="text-danger" th:if="${#fields.hasErrors('tipoContacto')}" th:errors="*{tipoContacto}"></div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="telefono">Teléfono móvil</label>
+            <input class="form-control" id="telefono" th:field="*{telefonos[0].numero}" required>
+            <div class="text-danger" th:if="${#fields.hasErrors('telefonos[0].numero')}"
+                 th:errors="*{telefonos[0].numero}"></div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="correo">Correo electrónico</label>
+            <input class="form-control" id="correo" type="email" th:field="*{correosElectronicos[0].direccion}"
+                   required>
+            <div class="text-danger" th:if="${#fields.hasErrors('correosElectronicos[0].direccion')}"
+                 th:errors="*{correosElectronicos[0].direccion}"></div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="foto">Fotografía</label>
+            <input class="form-control" id="foto" type="file" accept="image/jpeg,image/png"
+                   th:field="*{foto}" required>
+            <div class="text-danger" th:if="${#fields.hasErrors('foto')}" th:errors="*{foto}"></div>
+        </div>
+
+        <button class="btn btn-primary" type="submit">Guardar</button>
+        <a class="btn btn-link" th:href="@{/}">Volver al inicio</a>
+    </form>
+</main>
+<script th:src="@{/webjars/bootstrap/5.3.9/js/bootstrap.bundle.min.js}"></script>
+</body>
+</html>
