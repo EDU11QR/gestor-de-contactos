@@ -61,6 +61,7 @@ Crear un esquema MySQL y aplicar manualmente los scripts DDL previstos, en este 
 
 1. `db/ddl/V001__dominio_inicial.sql`
 2. `db/ddl/V002__sesiones_jdbc.sql`
+3. `db/ddl/V003__confirmaciones_eliminacion.sql`
 
 Los scripts ya están incluidos en el repositorio y deben aplicarse manualmente porque no se usa una herramienta de migraciones. La validación del esquema usa `spring.jpa.hibernate.ddl-auto=validate`.
 
@@ -103,7 +104,11 @@ Si las variables están vacías, la aplicación inicia sin crear usuarios. El fo
 - En la edición se validan todos los campos con las mismas reglas del alta; teléfonos y correos se normalizan y se reemplazan en bloque.
 - Si no se adjunta nueva fotografía se conserva la anterior. Si se adjunta, se valida con las mismas reglas del alta, se escribe con compensación y la fotografía anterior se elimina solo después de confirmar la transacción y revalidar en una transacción nueva que no esté referenciada.
 - Un error multipart, incluido el exceso de 2 MB, distingue alta de edición: en edición vuelve a `contactos/editar` con el id y los datos precargados.
-- La edición bloquea la fila del contacto mediante `SELECT … FOR UPDATE` para reducir el riesgo de actualizaciones concurrentes. No se implementa eliminación de contactos.
+- La edición bloquea la fila del contacto mediante `SELECT … FOR UPDATE` para reducir el riesgo de actualizaciones concurrentes.
+- La eliminación usa `GET /contactos/{id}/eliminar` para mostrar la confirmación y `POST /contactos/{id}/eliminar` para ejecutarla; ambas rutas son privadas y el POST exige token CSRF.
+- `GET /contactos/{id}/eliminar` genera un token aleatorio de 32 bytes codificado en Base64URL de 43 caracteres. Se almacena únicamente su hash SHA-256 en `confirmaciones_eliminacion`, asociado al identificador de la sesión y al contacto, con caducidad de 10 minutos. Si ya existía una confirmación para la sesión, se reemplaza.
+- `POST /contactos/{id}/eliminar` valida el formato del token, calcula su hash y lo consume con un `UPDATE` condicional y atómico que exige sesión, contacto, token no consumido y fecha de expiración futura. El consumo usa `REQUIRES_NEW`, por lo que queda confirmado aunque después falle la eliminación del contacto.
+- La eliminación del contacto es transaccional: bloquea la fila con `SELECT … FOR UPDATE`, elimina el contacto y programa el borrado de su fotografía solo después del commit, revalidando en una transacción nueva que el archivo no esté referenciado.
 
 ## Decisiones arquitectónicas
 
@@ -115,12 +120,16 @@ La Etapa 2 añade el listado protegido. `ContactoBusquedaForm` transporta filtro
 
 La Etapa 3 añade la edición protegida. `ContactoEdicionForm` reutiliza las validaciones del alta pero permite dejar la fotografía vacía para conservar la anterior; `ContactoService` carga la entidad con bloqueo pesimista, valida la unicidad del DNI excluyendo el propio id, normaliza teléfonos y correos, reemplaza las colecciones hijas y coordina la fotografía. `ContactoRepository` aporta las consultas de unicidad y bloqueo; `FotoService` añade el borrado de la fotografía anterior en `afterCommit`, manteniendo la compensación de escritura existente. `FotoReferenciaService` revalida las referencias con `REQUIRES_NEW` antes de borrar. `GlobalExceptionHandler` distingue el exceso multipart en alta y edición. `ContactoController` solo enlaza el formulario con el servicio y la vista `contactos/editar` precarga y reindexa todas las filas. No se añadieron entidades, DDL, migraciones ni dependencias.
 
+La Fase 4 añade la eliminación protegida. `ConfirmacionEliminacionService` genera el token, almacena solo su hash SHA-256 y lo consume con `REQUIRES_NEW` mediante `ConfirmacionEliminacionRepository`, que usa JDBC y un `UPDATE` condicional para garantizar un solo consumo. `V003__confirmaciones_eliminacion.sql` crea la tabla de confirmaciones con primary key por sesión, índices y restricción de expiración. `EliminacionContactoService` orquesta consumo y borrado, distinguiendo el fallo al generar, el fallo al consumir y el fallo al eliminar. `ContactoService.eliminar` conserva la transacción del dominio y `FotoService` programa el borrado de la fotografía tras el commit. El controlador solo enlaza las solicitudes, usa el identificador de la sesión JDBC y devuelve mensajes genéricos. No se añadieron entidades JPA ni dependencias.
+
 ## Funcionalidades pendientes
 
-- Eliminación de contactos.
-- Eliminación de fotografías al borrar contactos; la reconciliación automatizada de archivos huérfanos está pendiente y no existe una política de retención definida.
 - Caducidad operativa y revocación de usuarios con invalidación de sesiones.
 - M4 completo: traducción genérica de causas anidadas de `DataIntegrityViolationException` y de `ConstraintViolationException`. La unicidad de DNI ya se traduce a error de campo.
+
+## Limitaciones y deuda técnica pendiente
+
+- Reconciliación automática de fotografías huérfanas: si falla la revalidación de referencias o el borrado del archivo en `afterCommit`, puede quedar una fotografía huérfana. No hay reconciliación automatizada ni política de retención definida; su implementación queda pendiente.
 
 El detalle de decisiones y trazabilidad está en `docs/arquitectura.md`.
 
@@ -128,7 +137,7 @@ El detalle de decisiones y trazabilidad está en `docs/arquitectura.md`.
 
 ### Resumen
 
-La cobertura incluye autenticación, CSRF, sesiones JDBC, alta, detalle y edición de contactos, edición y eliminación de múltiples filas de teléfonos y correos, conservación y reemplazo de fotografías, revalidación de referencias antes del borrado, rollback real por violación de integridad, errores multipart en alta y edición, validación de fotografías, listado, búsqueda, filtros, paginación, caracteres comodín literales y 404 controlado. La relación detallada de pruebas y decisiones está en [`docs/arquitectura.md`](docs/arquitectura.md).
+La cobertura incluye autenticación, CSRF, sesiones JDBC, alta, detalle, edición y eliminación de contactos, edición y eliminación de múltiples filas de teléfonos y correos, conservación y reemplazo de fotografías, revalidación de referencias antes del borrado, rollback real por violación de integridad, errores multipart en alta y edición, validación de fotografías, listado, búsqueda, filtros, paginación, caracteres comodín literales, 404 controlado, confirmación de borrado y consumo de token. Las pruebas de `ConfirmacionEliminacionMysqlTests` ejecutan siete casos reales contra `gestor_contactos_test`: concurrencia, `REQUIRES_NEW`, token expirado, token incorrecto, token ya consumido, reemplazo por sesión e independencia entre sesiones. La relación detallada de pruebas y decisiones está en [`docs/arquitectura.md`](docs/arquitectura.md).
 
 H2 y Testcontainers no se usan. Para ejecutar las pruebas, exporta `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` y `SPRING_DATASOURCE_PASSWORD` apuntando exactamente a `gestor_contactos_test`, define `APP_PHOTOS_DIR` en una ruta temporal privada, deja vacías las variables de aprovisionamiento y ejecuta:
 
@@ -138,7 +147,7 @@ export APP_PHOTOS_DIR="${TMPDIR:-/tmp}/gestor-contactos-test-fotos"
 mvn test
 ```
 
-Resultado verificado: `BUILD SUCCESS`, 105 pruebas ejecutadas, 0 fallos y 0 errores.
+Resultado verificado: `BUILD SUCCESS`, 158 pruebas ejecutadas, 0 fallos, 0 errores y 0 omitidas.
 
 ## Uso de agentes de IA
 

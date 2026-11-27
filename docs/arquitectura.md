@@ -2,7 +2,7 @@
 
 ## 1. Objetivo y alcance
 
-Este documento registra las decisiones de arquitectura ya establecidas para el Gestor de Contactos. Su fuente es `AGENTS.md`, el historial de análisis de arquitectura acordado antes de la implementación y las decisiones técnicas aprobadas durante las Etapas 1, 2 y 3.
+Este documento registra las decisiones de arquitectura ya establecidas para el Gestor de Contactos. Su fuente es `AGENTS.md`, el historial de análisis de arquitectura acordado antes de la implementación y las decisiones técnicas aprobadas durante las Etapas 1, 2, 3 y la Fase 4.
 
 Todo elemento que no pueda verificarse en esas fuentes se marca como pendiente de aclaración y no debe asumirse durante la implementación.
 
@@ -31,12 +31,15 @@ El sistema es una aplicación web monolítica para administrar contactos de clie
 | `telefonos` | Teléfonos asociados a un contacto. | `id_telefono`, `id_contacto`, `numero`. |
 | `correos_electronicos` | Correos asociados a un contacto. | `id_correo`, `id_contacto`, `direccion`. |
 
-### 3.2 Tablas de sesión
+### 3.2 Tablas de sesión y confirmación
 
 - `SPRING_SESSION`.
 - `SPRING_SESSION_ATTRIBUTES`.
+- `confirmaciones_eliminacion`.
 
-Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del dominio y su DDL se aplica de forma manual.
+`SPRING_SESSION` y `SPRING_SESSION_ATTRIBUTES` son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del dominio y su DDL se aplica de forma manual.
+
+`confirmaciones_eliminacion` almacena `session_id`, `token_hash`, `id_contacto`, `creado_en`, `expira_en` y `consumido_en`. Su DDL se aplica mediante `V003__confirmaciones_eliminacion.sql` y no se modela como entidad JPA. La primary key es `session_id`, por lo que una sesión solo mantiene una confirmación y la generación posterior reemplaza la anterior. Tiene índices por hash, contacto y expiración, y una restricción que exige `expira_en > creado_en`.
 
 ### 3.3 Relaciones
 
@@ -87,7 +90,16 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - `ContactoService.actualizar` carga la entidad con `LockModeType.PESSIMISTIC_WRITE`, valida que el DNI no pertenezca a otro contacto y normaliza teléfonos y correos con las mismas reglas del alta.
 - Las colecciones de teléfonos y correos se limpian con `flush()` y se reinsertan para conservar las restricciones de unicidad por contacto y número o dirección; la transacción se revierte completa ante una violación real.
 - La edición conserva la fotografía anterior cuando no se adjunta archivo; con archivo nuevo aplica las mismas validaciones del alta y programa el borrado anterior solo tras el commit y la revalidación de referencias.
-- No se implementa eliminación de contactos ni reconciliación automática de archivos huérfanos.
+
+### 4.3 Fase 4 implementada
+
+- `GET /contactos/{id}/eliminar` y `POST /contactos/{id}/eliminar` están protegidos; el POST exige token CSRF y un id inexistente responde con redirección controlada y mensaje genérico.
+- `GET /contactos/{id}/eliminar` obtiene el detalle, genera un token aleatorio de 32 bytes con 43 caracteres en Base64URL y usa el identificador de la sesión JDBC, sin guardar el token en la sesión HTTP.
+- Se persiste únicamente el hash SHA-256 del token, junto con `session_id`, `id_contacto`, `creado_en`, `expira_en` y `consumido_en`. El TTL es de 10 minutos y la operación de generación reemplaza cualquier confirmación anterior de la misma sesión.
+- `POST /contactos/{id}/eliminar` valida el formato del token, calcula el hash y consume la confirmación mediante un `UPDATE` condicional y atómico que exige la misma sesión, el mismo contacto, `consumido_en IS NULL` y `expira_en > CURRENT_TIMESTAMP(3)`.
+- `ConfirmacionEliminacionService.consumir` usa `REQUIRES_NEW` para que el consumo quede confirmado de forma independiente aunque la transacción externa se revierta o falle la eliminación posterior.
+- `EliminacionContactoService` usa excepciones distintas para fallo al generar, fallo al consumir y fallo al eliminar; cada una conserva la causa y la capa HTTP solo muestra un mensaje genérico.
+- `ContactoService.eliminar` carga el contacto con `LockModeType.PESSIMISTIC_WRITE`, borra el contacto y programa el borrado de la fotografía en `afterCommit` solo si `FotoReferenciaService` confirma en `REQUIRES_NEW` que el archivo ya no está referenciado.
 
 ## 5. Fotografías
 - La fotografía es obligatoria en el alta; en la edición, dejar el campo vacío conserva la existente.
@@ -125,14 +137,17 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - `FotoService.eliminarTrasConfirmacion` valida el nombre de archivo, exige transacción activa y programa el borrado en `TransactionSynchronization.afterCommit`.
 - `FotoReferenciaService.estaReferenciada` consulta con `REQUIRES_NEW` y `readOnly` dentro del callback; el archivo anterior solo se elimina si la comprobación confirma que ya no está referenciado.
 - La fotografía anterior no se elimina si falla la validación del archivo nuevo, si falla la persistencia, si la transacción se revierte o si aparece una referencia antes del callback.
+- En alta, reemplazo y eliminación, si falla la revalidación de referencias o el borrado en `afterCommit`, el archivo puede quedar huérfano. No se implementa reconciliación automática ni política de retención; queda documentado como deuda técnica pendiente.
 
 ## 6. Transacciones
 
-- `ContactoService` es el único punto transaccional de la operación de contactos.
+- `ContactoService` es el punto transaccional de la operación de contactos.
+- `ConfirmacionEliminacionService.consumir` usa `REQUIRES_NEW` para confirmar el token de forma independiente; `ConfirmacionEliminacionService.generar` y el acceso JDBC de `ConfirmacionEliminacionRepository` no dependen de una transacción externa.
 - `FotoService` participa con propagación `MANDATORY`.
 - Antes de operar, se verifica `isActualTransactionActive()` e `isSynchronizationActive()`.
 - La compensación de escritura se registra antes de escribir el archivo en disco.
 - En la edición se bloquea la fila del contacto con `SELECT … FOR UPDATE`; la foto anterior se elimina en `afterCommit` solo si la transacción termina correctamente y `FotoReferenciaService` confirma en una transacción nueva que el archivo no está referenciado.
+- En la eliminación se bloquea la fila con `SELECT … FOR UPDATE`, se borra la entidad dentro de la misma transacción y se programa el borrado de la fotografía en `afterCommit` con la misma revalidación de referencias.
 - El despliegue previsto es monoinstancia.
 
 ## 7. Seguridad y sesiones
@@ -175,7 +190,7 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 ## 9. DDL y configuración
 
 - La convención de DDL es `db/ddl/V###__*.sql`.
-- Los archivos previstos son `db/ddl/V001__dominio_inicial.sql` y `db/ddl/V002__sesiones_jdbc.sql`.
+- Los archivos previstos son `db/ddl/V001__dominio_inicial.sql`, `db/ddl/V002__sesiones_jdbc.sql` y `db/ddl/V003__confirmaciones_eliminacion.sql`.
 - El DDL se aplica manualmente y en orden; no se usa Flyway ni Liquibase.
 - `spring.jpa.hibernate.ddl-auto=validate`.
 - `app.fotos.dir=${APP_PHOTOS_DIR}`; no se define un valor por defecto público.
@@ -205,12 +220,16 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 - Prueba HTTP real contra el servidor embebido: una fotografía superior a 2 MB en `POST /contactos/{id}/editar` devuelve `contactos/editar` con el id, el error controlado y la fotografía existente sin cambios.
 - Pruebas unitarias de `FotoService` con `Mockito`: borrado de la fotografía anterior solo cuando la transacción se confirma y no se borra si la revalidación confirma una referencia.
 - Pruebas de integración real en `ContactoEdicionIntegridadTests` contra `gestor_contactos_test`: la fotografía anterior se conserva si aparece una referencia antes del callback, y una violación única real en teléfonos revierte nombres, apellidos, teléfonos, correos y fotografía.
-- Ejecución final: `BUILD SUCCESS`, 105 pruebas ejecutadas, 0 fallos y 0 errores.
+- Pruebas unitarias de la Fase 4 en `EliminacionContactoServiceTests` y `ConfirmacionEliminacionServiceTests`: orden de consumo antes del borrado, propagación de confirmación inválida, traducción separada de fallos de generación y consumo con conservación de la causa, y traducción del fallo posterior al borrado.
+- Pruebas HTTP con MockMvc de la Fase 4: vista de confirmación con token oculto de 43 caracteres, CSRF rechazado, token ausente o inválido, token expirado o ya consumido, mensaje flash genérico y no eliminación del contacto ante fallos de persistencia o borrado.
+- Pruebas de integración real de repositorio y servicio de confirmación contra `gestor_contactos_test`, incluido el DDL de `V003__confirmaciones_eliminacion.sql`.
+- Pruebas reales en `ConfirmacionEliminacionMysqlTests` contra `gestor_contactos_test`: consumo concurrente con una sola transacción ganadora, confirmación de `REQUIRES_NEW` pese al rollback externo, y rechazo de token expirado, incorrecto y ya consumido.
+- Ejecución final: `BUILD SUCCESS`, 158 pruebas ejecutadas, 0 fallos, 0 errores y 0 omitidas.
 - H2 y Testcontainers no se usan. El daemon de Docker no responde en este entorno y no hay dependencia de Testcontainers.
 
 ### Pruebas pendientes
 
-- Ninguna para el alcance implementado en las Etapas 1, 2 y 3.
+- Ninguna para el alcance implementado en las Etapas 1, 2, 3 y la Fase 4.
 
 ## 11. Trazabilidad de hallazgos
 
@@ -219,11 +238,10 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 | A1 | Riesgo de aprovisionar y revocar usuarios sin idempotencia, fuera de un flujo HTTP seguro, con posible exposición de credenciales y sesiones vigentes tras la revocación. | Aprovisionamiento idempotente fuera de HTTP, secreto de entorno y contraseñas BCrypt implementados; revocación con invalidación de sesiones por `PRINCIPAL_NAME` pendiente de implementación. | PARCIALMENTE IMPLEMENTADO; REVOCACIÓN PENDIENTE |
 | A2 | Riesgo de cuentas duplicadas o autenticación inconsistente por emails con distinta capitalización o espacios. | Normalización del email con `trim` y `toLowerCase(Locale.ROOT)` al crear usuarios y al autenticar. | RESUELTO DOCUMENTALMENTE |
 | A3 | Riesgo de persistir authorities o de confundir autoridad técnica con roles de negocio no previstos. | Authority implícita `ROLE_USER`, sin persistirla ni confundirla con roles de negocio. | RESUELTO DOCUMENTALMENTE |
-| A4 | Riesgo de operación parcial de contacto y fotografía si la escritura del archivo quedaba fuera de la transacción del servicio. | `ContactoService` centraliza la transacción; `FotoService` usa `MANDATORY`, verificación de transacción activa y sincronización; la compensación se registra antes de escribir en disco, el borrado anterior se programa en `afterCommit` y se revalida con `REQUIRES_NEW`. | IMPLEMENTADO Y VERIFICADO PARA ALTA Y REEMPLAZO; ELIMINACIÓN DE CONTACTOS PENDIENTE |
+| A4 / M3 | Riesgo histórico de operación parcial de contacto y fotografía (A4) y de condición de carrera al reemplazar o eliminar la fotografía (M3). | A4 motivó centralizar la transacción en `ContactoService`, usar `FotoService` con `MANDATORY`, verificar la transacción activa, registrar la compensación antes de escribir y programar el borrado en `afterCommit`; M3 motivó bloquear la fila y revalidar referencias con `REQUIRES_NEW`. Estado final: alta, reemplazo y eliminación aplican las reglas correspondientes, y la reconciliación automática de archivos huérfanos sigue pendiente. | IMPLEMENTADO Y VERIFICADO PARA ALTA, REEMPLAZO Y ELIMINACIÓN; DEUDA TÉCNICA PENDIENTE |
 | A5 | Riesgo de romper Spring Session o exponer el hash BCrypt al serializar el principal en la sesión. | Principal personalizado `Serializable` y `CredentialsContainer`, `serialVersionUID` estable, sin hash BCrypt tras autenticación y prueba ejecutada de no serialización en `SPRING_SESSION_ATTRIBUTES`. | RESUELTO Y VERIFICADO |
-| M1 | Ausencia de convención para DDL versionado y riesgo de derive automático del esquema. | Convención `db/ddl/V###__*.sql`, archivos `V001__dominio_inicial.sql` y `V002__sesiones_jdbc.sql`, aplicación manual ordenada, sin Flyway/Liquibase y `ddl-auto=validate`. | RESUELTO DOCUMENTALMENTE |
+| M1 | Ausencia de convención para DDL versionado y riesgo de derive automático del esquema. | Convención `db/ddl/V###__*.sql`, archivos `V001__dominio_inicial.sql`, `V002__sesiones_jdbc.sql` y `V003__confirmaciones_eliminacion.sql`, aplicación manual ordenada, sin Flyway/Liquibase y `ddl-auto=validate`. | RESUELTO Y APLICADO |
 | M2 | El registro de UUID en vuelo está en memoria y no se comparte entre instancias. | Documentar el despliegue monoinstancia como restricción arquitectónica, sin añadir dependencias. | RESUELTO DOCUMENTALMENTE |
-| M3 | Condición de carrera al reemplazar o eliminar la fotografía de un contacto. | En edición se bloquea la fila con `SELECT … FOR UPDATE`, se valida y escribe la foto nueva con compensación antes de la escritura, y la anterior se elimina en `afterCommit` solo si `FotoReferenciaService` confirma en `REQUIRES_NEW` que no está referenciada; la eliminación de contactos sigue pendiente y no hay reconciliación automatizada ni política de retención definida. | PARCIALMENTE IMPLEMENTADO; REEMPLAZO VERIFICADO, ELIMINACIÓN PENDIENTE |
 | M4 | Ausencia de una estrategia centralizada para traducir violaciones de validación y restricciones de integridad, incluidas causas anidadas. | `GlobalExceptionHandler` traduce `DataIntegrityViolationException` directo y `ContactoService` traduce la unicidad de DNI a error de campo; la búsqueda genérica en cadena de causas y `ConstraintViolationException` quedan pendientes. | PARCIALMENTE IMPLEMENTADO |
 | M5 | Posible discrepancia en el nombre real de la cookie y configuración Secure detrás de proxy TLS. | Fijar `GESTOR_SESSION` como nombre de cookie y configurar `server.forward-headers-strategy=framework` cuando exista proxy inverso TLS. | RESUELTO DOCUMENTALMENTE |
 | M6 | Incompatibilidad potencial del mapeo `CHAR(8)` con Hibernate `validate` en MySQL 8.4.9. | `CHAR(8)` con mapeo JDBC explícito o `columnDefinition`, verificación en MySQL 8.4.9 y alternativa `VARCHAR(8)` con `CHECK`. | RESUELTO DOCUMENTALMENTE |
@@ -238,15 +256,23 @@ Son gestionadas por Spring Session JDBC. No se modelan como entidades JPA del do
 | E3-2 | Un error multipart en edición devolvía `contactos/nuevo`, perdiendo el contexto de edición. | `GlobalExceptionHandler` detecta la ruta `POST /contactos/{id}/editar`, reconstruye `ContactoEdicionForm` desde `ContactoService` y devuelve `contactos/editar` con id, datos y error; cubierto por prueba HTTP real con servidor embebido. | RESUELTO Y VERIFICADO |
 | E3-3 | La comprobación de referencias y el borrado del archivo anterior podían quedar separados por una transacción. | `FotoReferenciaService.estaReferenciada` usa `REQUIRES_NEW` dentro del callback y el archivo solo se elimina si no está referenciado; cubierto por prueba unitaria y prueba de integración real que fuerza una referencia antes del callback. | RESUELTO Y VERIFICADO |
 | E3-4 | No existía una prueba que demostrara el rollback real de teléfonos y correos tras una violación de integridad. | `ContactoEdicionIntegridadTests` provoca una violación única real en MySQL contra `gestor_contactos_test`, sin `@Transactional` externo ni sustitución por Mockito, y comprueba nombres, apellidos, teléfonos, correos y fotografía intactos. | RESUELTO Y VERIFICADO |
-| E3-5 | La documentación afirmaba una cobertura superior a la demostrada. | `README.md` y este documento se actualizan con el alcance real de las pruebas y el contador verificado de 105 pruebas. | CORREGIDO Y VERIFICADO |
+| E3-5 | La documentación afirmaba una cobertura superior a la demostrada. | `README.md` y este documento se actualizan con el alcance real de las pruebas y el contador verificado de 158 pruebas tras la Fase 4. | CORREGIDO Y VERIFICADO |
+
+### 11.2 Auditoría final de la Fase 4 y correcciones
+
+| ID | Hallazgo comprobado | Corrección implementada | Estado |
+|---|---|---|---|
+| E4-1 | `README.md` y este documento afirmaban que la eliminación estaba pendiente y mantenían un contador de pruebas desactualizado. | Se documentan los endpoints, el token aleatorio, el hash SHA-256, la asociación con sesión y contacto, el TTL de 10 minutos, el consumo atómico, `REQUIRES_NEW`, el DDL de V003, la eliminación transaccional, el borrado de fotografía tras el commit, la limitación de archivos huérfanos y el contador verificado de 158 pruebas, incluidas 7 reales contra MySQL. | CORREGIDO Y VERIFICADO |
+| E4-2 | `ContactoEliminacionHttpTests` usaba `@MockBean` y `@SpyBean`, deprecados en la versión actual de Spring Boot. | Se sustituyen por `@MockitoBean` y `@MockitoSpyBean`, conservando el comportamiento de las pruebas. | CORREGIDO Y VERIFICADO |
+| E4-3 | `FalloPersistenciaConfirmacionException` se usaba tanto al generar como al consumir, con un mensaje que solo describía el registro. | Se añade `FalloConsumoConfirmacionException` para el consumo; se conserva la causa original, se mantiene el mensaje HTTP genérico y se actualizan controlador y pruebas unitarias. | CORREGIDO Y VERIFICADO |
+| E4-4 | No estaba documentada la posibilidad de que quede una fotografía huérfana si falla el borrado diferido. | Se documenta como limitación conocida y deuda técnica pendiente, sin implementar reconciliación automática ni cambiar la política de la Fase 4. | CORREGIDO Y VERIFICADO |
 
 El estado `RESUELTO DOCUMENTALMENTE` indica que la decisión de diseño está documentada; no implica que exista código Java o pruebas ejecutadas.
 
 ## 12. Decisiones pendientes de aclaración o implementación
 
 - Implementación completa de M4: traducción genérica de causas anidadas de `DataIntegrityViolationException` y de `ConstraintViolationException`.
-- Eliminación de contactos.
-- Eliminación de fotografías al borrar contactos con las reglas M3, sin reconciliación automatizada de archivos huérfanos ni política de retención definida.
+- Reconciliación automatizada de fotografías huérfanas y política de retención, como deuda técnica pendiente.
 - Caducidad operativa y revocación de usuarios con invalidación de sesiones.
 - Usuario de prueba, sin credenciales reales.
 - Disponibilidad de Docker para Testcontainers no requerida en la etapa actual.
