@@ -1,0 +1,15 @@
+<aside class="app-sidebar" th:fragment="sidebar(activo)">
+    <div class="sidebar-brand">
+        <span class="sidebar-brand__marca">GC</span>
+        <span class="sidebar-brand__texto">Gestor de Contactos</span>
+    </div>
+    <nav class="sidebar-nav" aria-label="Navegación principal">
+        <a class="sidebar-link" th:classappend="${activo == 'inicio'} ? 'active' : ''" th:href="@{/}">Inicio</a>
+        <p class="sidebar-seccion">Contactos</p>
+        <a class="sidebar-link" th:classappend="${activo == 'contactos'} ? 'active' : ''"
+           th:href="@{/contactos}">Ver contactos</a>
+        <a class="sidebar-link" th:classappend="${activo == 'nuevo'} ? 'active' : ''"
+           th:href="@{/contactos/nuevo}">Nuevo contacto</a>
+    </nav>
+    <div class="sidebar-pie">Uso interno</div>
+</aside>

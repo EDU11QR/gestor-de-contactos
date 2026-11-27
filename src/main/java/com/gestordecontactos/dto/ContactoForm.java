@@ -28,10 +28,12 @@ public class ContactoForm {
     private TipoContacto tipoContacto;
 
     @NotEmpty(message = "Debe registrar al menos un teléfono")
+    @Size(max = 20, message = "No se pueden registrar más de 20 teléfonos")
     @Valid
     private List<TelefonoForm> telefonos = new ArrayList<>();
 
     @NotEmpty(message = "Debe registrar al menos un correo electrónico")
+    @Size(max = 20, message = "No se pueden registrar más de 20 correos electrónicos")
     @Valid
     private List<CorreoForm> correosElectronicos = new ArrayList<>();
 

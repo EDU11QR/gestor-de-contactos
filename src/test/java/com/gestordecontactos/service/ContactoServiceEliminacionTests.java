@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.gestordecontactos.entity.Contacto;
+import com.gestordecontactos.exception.IntegridadExceptionTranslator;
 import com.gestordecontactos.exception.RecursoNoEncontradoException;
 import com.gestordecontactos.repository.ContactoRepository;
 import java.util.Optional;
@@ -27,7 +28,7 @@ class ContactoServiceEliminacionTests {
     void inicializar() {
         contactoRepository = mock(ContactoRepository.class);
         fotoService = mock(FotoService.class);
-        service = new ContactoService(contactoRepository, fotoService);
+        service = new ContactoService(contactoRepository, fotoService, new IntegridadExceptionTranslator());
     }
 
     @Test

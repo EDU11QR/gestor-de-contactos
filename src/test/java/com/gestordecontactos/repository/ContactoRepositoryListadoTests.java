@@ -86,12 +86,14 @@ class ContactoRepositoryListadoTests {
 
     @Test
     void filtroClienteIncluyeClientesYAmbos() {
-        guardar("Ana", "Perez", dni("3000"), "CLIENTE");
-        guardar("Luis", "Gomez", dni("3000"), "PROVEEDOR");
-        guardar("Marta", "Ruiz", dni("3000"), "AMBOS");
+        String marca = marcaUnica();
+        guardar("Ana", marca + "Perez", dni("3000"), "CLIENTE");
+        guardar("Luis", marca + "Gomez", dni("3000"), "PROVEEDOR");
+        guardar("Marta", marca + "Ruiz", dni("3000"), "AMBOS");
         flushClear();
 
-        Page<Contacto> pagina = contactoRepository.buscarContactos(true, "%", "CLIENTE", pagina(0, 10));
+        Page<Contacto> pagina = contactoRepository.buscarContactos(
+                false, "%" + marca + "%", "CLIENTE", pagina(0, 10));
 
         assertEquals(2, pagina.getTotalElements());
         assertEquals(List.of("CLIENTE", "AMBOS"), tipos(pagina));
@@ -99,12 +101,14 @@ class ContactoRepositoryListadoTests {
 
     @Test
     void filtroProveedorIncluyeProveedoresYAmbos() {
-        guardar("Ana", "Perez", dni("3000"), "CLIENTE");
-        guardar("Luis", "Gomez", dni("3000"), "PROVEEDOR");
-        guardar("Marta", "Ruiz", dni("3000"), "AMBOS");
+        String marca = marcaUnica();
+        guardar("Ana", marca + "Perez", dni("3000"), "CLIENTE");
+        guardar("Luis", marca + "Gomez", dni("3000"), "PROVEEDOR");
+        guardar("Marta", marca + "Ruiz", dni("3000"), "AMBOS");
         flushClear();
 
-        Page<Contacto> pagina = contactoRepository.buscarContactos(true, "%", "PROVEEDOR", pagina(0, 10));
+        Page<Contacto> pagina = contactoRepository.buscarContactos(
+                false, "%" + marca + "%", "PROVEEDOR", pagina(0, 10));
 
         assertEquals(2, pagina.getTotalElements());
         assertEquals(List.of("PROVEEDOR", "AMBOS"), tipos(pagina));
@@ -112,12 +116,14 @@ class ContactoRepositoryListadoTests {
 
     @Test
     void filtroAmbosExcluyeOtrosTipos() {
-        guardar("Ana", "Perez", dni("3000"), "CLIENTE");
-        guardar("Luis", "Gomez", dni("3000"), "PROVEEDOR");
-        guardar("Marta", "Ruiz", dni("3000"), "AMBOS");
+        String marca = marcaUnica();
+        guardar("Ana", marca + "Perez", dni("3000"), "CLIENTE");
+        guardar("Luis", marca + "Gomez", dni("3000"), "PROVEEDOR");
+        guardar("Marta", marca + "Ruiz", dni("3000"), "AMBOS");
         flushClear();
 
-        Page<Contacto> pagina = contactoRepository.buscarContactos(true, "%", "AMBOS", pagina(0, 10));
+        Page<Contacto> pagina = contactoRepository.buscarContactos(
+                false, "%" + marca + "%", "AMBOS", pagina(0, 10));
 
         assertEquals(1, pagina.getTotalElements());
         assertEquals(List.of("AMBOS"), tipos(pagina));
@@ -209,5 +215,9 @@ class ContactoRepositoryListadoTests {
     private String dni(String prefijo) {
         int sufijo = Math.floorMod(SECUENCIA.incrementAndGet(), 10_000);
         return prefijo + String.format(Locale.ROOT, "%04d", sufijo);
+    }
+
+    private String marcaUnica() {
+        return "Filtro" + UUID.randomUUID().toString().substring(0, 8);
     }
 }

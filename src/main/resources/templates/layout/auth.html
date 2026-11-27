@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org" th:fragment="layout(contenido, titulo)">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${titulo}">Iniciar sesión</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.9/dist/css/bootstrap.min.css}">
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body class="app-body app-body--auth">
+<div class="auth-shell">
+    <div class="auth-brand">
+        <span class="auth-brand__marca">GC</span>
+        <span>Gestor de Contactos</span>
+    </div>
+    <main class="auth-card" th:insert="${contenido}"></main>
+    <footer class="auth-footer">Gestor de Contactos · Uso interno</footer>
+</div>
+<script th:src="@{/webjars/bootstrap/5.3.9/dist/js/bootstrap.bundle.min.js}"></script>
+<script th:src="@{/js/app.js}"></script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 package com.gestordecontactos.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -16,6 +17,7 @@ import com.gestordecontactos.dto.TelefonoForm;
 import com.gestordecontactos.dto.TipoContacto;
 import com.gestordecontactos.entity.Contacto;
 import com.gestordecontactos.exception.DniDuplicadoException;
+import com.gestordecontactos.exception.IntegridadExceptionTranslator;
 import com.gestordecontactos.exception.RecursoNoEncontradoException;
 import com.gestordecontactos.repository.ContactoRepository;
 import java.sql.SQLIntegrityConstraintViolationException;
@@ -35,7 +37,7 @@ class ContactoServiceEdicionTests {
     void inicializar() {
         contactoRepository = mock(ContactoRepository.class);
         fotoService = mock(FotoService.class);
-        service = new ContactoService(contactoRepository, fotoService);
+        service = new ContactoService(contactoRepository, fotoService, new IntegridadExceptionTranslator());
     }
 
     @Test
@@ -113,15 +115,16 @@ class ContactoServiceEdicionTests {
         Contacto contacto = contacto("anterior.png");
         when(contactoRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(contacto));
         when(fotoService.guardar(any())).thenReturn(new FotoService.FotoGuardada("nueva.png", "image/png", 512));
-        when(contactoRepository.saveAndFlush(any(Contacto.class)))
-                .thenThrow(new DataIntegrityViolationException("save",
-                        new SQLIntegrityConstraintViolationException(
-                                "Duplicate entry '87654321' for key 'contactos.uq_contactos_dni'")));
+        DataIntegrityViolationException original = new DataIntegrityViolationException("save",
+                new SQLIntegrityConstraintViolationException(
+                        "Duplicate entry '87654321' for key 'contactos.uq_contactos_dni'"));
+        when(contactoRepository.saveAndFlush(any(Contacto.class))).thenThrow(original);
         ContactoEdicionForm form = formulario("87654321", "987654321", "ana@ejemplo.com");
         form.setFoto(new MockMultipartFile("foto", "foto.png", "image/png", new byte[] {1}));
 
-        assertThrows(DniDuplicadoException.class, () -> service.actualizar(7L, form));
+        DniDuplicadoException ex = assertThrows(DniDuplicadoException.class, () -> service.actualizar(7L, form));
 
+        assertSame(original, ex.getCause());
         verify(fotoService, never()).eliminarTrasConfirmacion(anyString());
         verify(contactoRepository, never()).existsByFotoArchivo(anyString());
     }

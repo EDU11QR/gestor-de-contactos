@@ -1,53 +1,58 @@
 <!doctype html>
-<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<html lang="es" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout/base :: layout(~{::contenido}, 'Detalle del contacto', 'contactos', false)}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Detalle del contacto</title>
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.9/css/bootstrap.min.css}">
 </head>
-<body class="container py-5">
-<main class="mx-auto" style="max-width: 48rem;">
-    <div class="alert alert-success" th:if="${registrado}">Contacto registrado correctamente.</div>
-    <div class="alert alert-success" th:if="${actualizado}">Contacto actualizado correctamente.</div>
+<body>
+<div th:fragment="contenido">
+    <section class="app-card">
+        <div class="app-card__cabecera">
+            <h1 class="app-card__titulo">Detalle del contacto</h1>
+            <p class="app-card__descripcion">Información registrada y acciones disponibles.</p>
+        </div>
+        <div class="app-card__cuerpo">
+            <dl class="row app-detalle">
+                <dt class="col-sm-4">Nombres</dt>
+                <dd class="col-sm-8" th:text="${contacto.nombres}"></dd>
 
-    <h1 class="h3 mb-4">Detalle del contacto</h1>
+                <dt class="col-sm-4">Apellidos</dt>
+                <dd class="col-sm-8" th:text="${contacto.apellidos}"></dd>
 
-    <dl class="row">
-        <dt class="col-sm-4">Nombres</dt>
-        <dd class="col-sm-8" th:text="${contacto.nombres}"></dd>
+                <dt class="col-sm-4">DNI</dt>
+                <dd class="col-sm-8" th:text="${contacto.dni}"></dd>
 
-        <dt class="col-sm-4">Apellidos</dt>
-        <dd class="col-sm-8" th:text="${contacto.apellidos}"></dd>
+                <dt class="col-sm-4">Tipo</dt>
+                <dd class="col-sm-8"><span class="badge rounded-pill text-bg-primary"
+                                           th:text="${contacto.tipoContacto}"></span></dd>
 
-        <dt class="col-sm-4">DNI</dt>
-        <dd class="col-sm-8" th:text="${contacto.dni}"></dd>
+                <dt class="col-sm-4">Teléfono</dt>
+                <dd class="col-sm-8">
+                    <span class="d-block" th:each="telefono : ${contacto.telefonos}"
+                          th:text="${telefono}"></span>
+                </dd>
 
-        <dt class="col-sm-4">Tipo</dt>
-        <dd class="col-sm-8" th:text="${contacto.tipoContacto}"></dd>
+                <dt class="col-sm-4">Correo electrónico</dt>
+                <dd class="col-sm-8">
+                    <span class="d-block" th:each="correo : ${contacto.correosElectronicos}"
+                          th:text="${correo}"></span>
+                </dd>
 
-        <dt class="col-sm-4">Teléfono</dt>
-        <dd class="col-sm-8">
-            <span th:each="telefono : ${contacto.telefonos}" th:text="${telefono}"></span>
-        </dd>
+                <dt class="col-sm-4">Fotografía</dt>
+                <dd class="col-sm-8"
+                    th:text="${contacto.fotoContentType} + ' (' + ${contacto.fotoTamanoBytes} + ' bytes)'"></dd>
+            </dl>
 
-        <dt class="col-sm-4">Correo electrónico</dt>
-        <dd class="col-sm-8">
-            <span th:each="correo : ${contacto.correosElectronicos}" th:text="${correo}"></span>
-        </dd>
-
-        <dt class="col-sm-4">Fotografía</dt>
-        <dd class="col-sm-8"
-            th:text="${contacto.fotoContentType} + ' (' + ${contacto.fotoTamanoBytes} + ' bytes)'"></dd>
-    </dl>
-
-    <div class="d-flex gap-2">
-        <a class="btn btn-primary" th:href="@{/contactos/{id}/editar(id=${contacto.id})}">Editar</a>
-        <a class="btn btn-outline-danger" th:href="@{/contactos/{id}/eliminar(id=${contacto.id})}">Eliminar</a>
-        <a class="btn btn-secondary" th:href="@{/contactos}">Volver al listado</a>
-        <a class="btn btn-outline-secondary" th:href="@{/}">Volver al inicio</a>
-    </div>
-</main>
-<script th:src="@{/webjars/bootstrap/5.3.9/js/bootstrap.bundle.min.js}"></script>
+            <div class="app-acciones app-acciones--final">
+                <a class="btn btn-primary" th:href="@{/contactos/{id}/editar(id=${contacto.id})}">Editar</a>
+                <a class="btn btn-outline-danger"
+                   th:href="@{/contactos/{id}/eliminar(id=${contacto.id})}">Eliminar</a>
+                <a class="btn btn-outline-secondary" th:href="@{/contactos}">Volver al listado</a>
+            </div>
+        </div>
+    </section>
+</div>
 </body>
 </html>

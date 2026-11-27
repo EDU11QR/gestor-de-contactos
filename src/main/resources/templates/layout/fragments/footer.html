@@ -1,0 +1,5 @@
+<footer class="app-footer" th:fragment="footer(publico)">
+    <span>Gestor de Contactos</span>
+    <a th:unless="${publico}" th:href="@{/}">Volver al inicio</a>
+    <span th:if="${publico}">Uso interno</span>
+</footer>

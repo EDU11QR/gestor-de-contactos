@@ -1,6 +1,7 @@
 package com.gestordecontactos.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -14,6 +15,7 @@ import com.gestordecontactos.dto.TelefonoForm;
 import com.gestordecontactos.dto.TipoContacto;
 import com.gestordecontactos.entity.Contacto;
 import com.gestordecontactos.exception.DniDuplicadoException;
+import com.gestordecontactos.exception.IntegridadExceptionTranslator;
 import com.gestordecontactos.repository.ContactoRepository;
 import java.sql.SQLIntegrityConstraintViolationException;
 import java.util.List;
@@ -34,7 +36,7 @@ class ContactoServiceTests {
     void inicializar() {
         contactoRepository = mock(ContactoRepository.class);
         fotoService = mock(FotoService.class);
-        service = new ContactoService(contactoRepository, fotoService);
+        service = new ContactoService(contactoRepository, fotoService, new IntegridadExceptionTranslator());
     }
 
     @Test
@@ -78,15 +80,16 @@ class ContactoServiceTests {
     void crearTraduceDniDuplicadoPorRestriccionUnica() {
         when(contactoRepository.existsByDni("12345678")).thenReturn(false);
         when(fotoService.guardar(any())).thenReturn(new FotoService.FotoGuardada("uuid.png", "image/png", 1024));
-        when(contactoRepository.save(any(Contacto.class)))
-                .thenThrow(new DataIntegrityViolationException("save",
-                        new SQLIntegrityConstraintViolationException(
-                                "Duplicate entry '12345678' for key 'contactos.uq_contactos_dni'")));
+        DataIntegrityViolationException original = new DataIntegrityViolationException("save",
+                new SQLIntegrityConstraintViolationException(
+                        "Duplicate entry '12345678' for key 'contactos.uq_contactos_dni'"));
+        when(contactoRepository.save(any(Contacto.class))).thenThrow(original);
 
         DniDuplicadoException ex = assertThrows(DniDuplicadoException.class,
                 () -> service.crear(formulario("987654321", "ana@ejemplo.com")));
 
-        assertEquals("Ya existe un contacto con el DNI 12345678", ex.getMessage());
+        assertEquals("Ya existe un contacto con ese DNI.", ex.getMessage());
+        assertSame(original, ex.getCause());
     }
 
     @Test

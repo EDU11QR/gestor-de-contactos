@@ -1,21 +1,23 @@
 <!doctype html>
-<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<html lang="es" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout/base :: layout(~{::contenido}, 'Contacto no encontrado', 'contactos', false)}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Contacto no encontrado</title>
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.9/css/bootstrap.min.css}">
 </head>
-<body class="container py-5">
-<main class="mx-auto" style="max-width: 48rem;">
-    <h1 class="h3 mb-4">Contacto no encontrado</h1>
-    <p>No existe un contacto con el identificador solicitado.</p>
-
-    <div class="d-flex gap-2">
-        <a class="btn btn-primary" th:href="@{/contactos}">Volver al listado</a>
-        <a class="btn btn-outline-secondary" th:href="@{/}">Volver al inicio</a>
-    </div>
-</main>
-<script th:src="@{/webjars/bootstrap/5.3.9/js/bootstrap.bundle.min.js}"></script>
+<body>
+<div th:fragment="contenido">
+    <section class="app-card">
+        <div class="app-card__cuerpo app-vacio">
+            <h1 class="app-vacio__titulo">Contacto no encontrado</h1>
+            <p class="app-vacio__texto">No existe un contacto con el identificador solicitado.</p>
+            <div class="app-acciones justify-content-center">
+                <a class="btn btn-primary" th:href="@{/contactos}">Volver al listado</a>
+                <a class="btn btn-outline-secondary" th:href="@{/}">Volver al inicio</a>
+            </div>
+        </div>
+    </section>
+</div>
 </body>
 </html>

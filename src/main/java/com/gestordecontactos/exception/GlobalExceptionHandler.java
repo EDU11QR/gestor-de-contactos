@@ -7,8 +7,11 @@ import com.gestordecontactos.dto.TelefonoForm;
 import com.gestordecontactos.dto.TipoContacto;
 import com.gestordecontactos.service.ContactoService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,19 +26,44 @@ import org.springframework.web.servlet.ModelAndView;
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private static final String MENSAJE_TAMANO_FOTO = "La fotografía no puede superar 2 MB";
+    private static final String MENSAJE_CONFLICTO = "No se pudo completar la operación por un conflicto de datos.";
+    private static final String MENSAJE_VALIDACION = "Los datos enviados no son válidos.";
     private static final Pattern RUTA_EDICION = Pattern.compile("^/contactos/(\\d+)/editar$");
 
     private final ContactoService contactoService;
+    private final IntegridadExceptionTranslator traductor;
 
-    public GlobalExceptionHandler(ContactoService contactoService) {
+    public GlobalExceptionHandler(ContactoService contactoService, IntegridadExceptionTranslator traductor) {
         this.contactoService = contactoService;
+        this.traductor = traductor;
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<String> integridadViolada(DataIntegrityViolationException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body("Los datos del contacto violan una restricción de integridad.");
+        RuntimeException traducido = traductor.traducirIntegridad(ex, null);
+        LOGGER.warn("Violación de integridad no controlada: {}", traducido.getClass().getSimpleName());
+        return respuestaConflicto();
+    }
+
+    @ExceptionHandler(ConflictoIntegridadException.class)
+    public ResponseEntity<String> conflictoIntegridad(ConflictoIntegridadException ex) {
+        LOGGER.warn("Conflicto de integridad controlado: {}", ex.getClass().getSimpleName());
+        return respuestaConflicto();
+    }
+
+    @ExceptionHandler(ValidacionDominioException.class)
+    public ResponseEntity<String> validacionDominio(ValidacionDominioException ex) {
+        LOGGER.warn("Validación de dominio controlada: {}", ex.getClass().getSimpleName());
+        return respuestaValidacion();
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<String> validacionJakarta(ConstraintViolationException ex) {
+        ValidacionDominioException traducido = traductor.traducirValidacion(ex);
+        LOGGER.warn("Validación de Jakarta no controlada: {}", traducido.getClass().getSimpleName());
+        return respuestaValidacion();
     }
 
     @ExceptionHandler(RecursoNoEncontradoException.class)
@@ -56,6 +84,14 @@ public class GlobalExceptionHandler {
             throw ex;
         }
         return formularioConErrorFoto(solicitud);
+    }
+
+    private ResponseEntity<String> respuestaConflicto() {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(MENSAJE_CONFLICTO);
+    }
+
+    private ResponseEntity<String> respuestaValidacion() {
+        return ResponseEntity.badRequest().body(MENSAJE_VALIDACION);
     }
 
     private ModelAndView formularioConErrorFoto(HttpServletRequest solicitud) {

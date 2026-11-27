@@ -1,0 +1,7 @@
+<div th:fragment="alerts">
+    <div class="alert alert-success app-alert" th:if="${eliminado}">Contacto eliminado correctamente.</div>
+    <div class="alert alert-success app-alert" th:if="${registrado}">Contacto registrado correctamente.</div>
+    <div class="alert alert-success app-alert" th:if="${actualizado}">Contacto actualizado correctamente.</div>
+    <div class="alert alert-danger app-alert" th:if="${errorEliminacion}" th:text="${errorEliminacion}"></div>
+    <div class="alert alert-danger app-alert" th:if="${errorFiltro}" th:text="${errorFiltro}"></div>
+</div>

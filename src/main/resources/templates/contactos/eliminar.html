@@ -1,38 +1,42 @@
 <!doctype html>
-<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<html lang="es" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout/base :: layout(~{::contenido}, 'Confirmar eliminación', 'contactos', false)}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Confirmar eliminación</title>
-    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.9/css/bootstrap.min.css}">
 </head>
-<body class="container py-5">
-<main class="mx-auto" style="max-width: 48rem;">
-    <h1 class="h3 mb-4">Confirmar eliminación</h1>
-    <p>¿Desea eliminar el siguiente contacto? Esta acción no se puede deshacer.</p>
-
-    <dl class="row">
-        <dt class="col-sm-4">Nombres</dt>
-        <dd class="col-sm-8" th:text="${contacto.nombres}"></dd>
-
-        <dt class="col-sm-4">Apellidos</dt>
-        <dd class="col-sm-8" th:text="${contacto.apellidos}"></dd>
-
-        <dt class="col-sm-4">DNI</dt>
-        <dd class="col-sm-8" th:text="${contacto.dni}"></dd>
-
-        <dt class="col-sm-4">Clasificación</dt>
-        <dd class="col-sm-8" th:text="${contacto.tipoContacto}"></dd>
-    </dl>
-
-    <form th:action="@{/contactos/{id}/eliminar(id=${contacto.id})}" method="post">
-        <input type="hidden" name="token" th:value="${token}">
-        <div class="d-flex gap-2">
-            <button class="btn btn-danger" type="submit">Eliminar contacto</button>
-            <a class="btn btn-secondary" th:href="@{/contactos/{id}(id=${contacto.id})}">Cancelar</a>
+<body>
+<div th:fragment="contenido">
+    <section class="app-card app-riesgo">
+        <div class="app-card__cabecera">
+            <h1 class="app-card__titulo">Confirmar eliminación</h1>
+            <p class="app-card__descripcion">Revise los datos antes de continuar. Esta acción no se puede deshacer.</p>
         </div>
-    </form>
-</main>
-<script th:src="@{/webjars/bootstrap/5.3.9/js/bootstrap.bundle.min.js}"></script>
+        <div class="app-card__cuerpo">
+            <dl class="row app-detalle">
+                <dt class="col-sm-4">Nombres</dt>
+                <dd class="col-sm-8" th:text="${contacto.nombres}"></dd>
+
+                <dt class="col-sm-4">Apellidos</dt>
+                <dd class="col-sm-8" th:text="${contacto.apellidos}"></dd>
+
+                <dt class="col-sm-4">DNI</dt>
+                <dd class="col-sm-8" th:text="${contacto.dni}"></dd>
+
+                <dt class="col-sm-4">Clasificación</dt>
+                <dd class="col-sm-8" th:text="${contacto.tipoContacto}"></dd>
+            </dl>
+
+            <form class="app-acciones app-acciones--final"
+                  th:action="@{/contactos/{id}/eliminar(id=${contacto.id})}" method="post">
+                <input type="hidden" name="token" th:value="${token}">
+                <button class="btn btn-danger" type="submit">Eliminar contacto</button>
+                <a class="btn btn-outline-secondary"
+                   th:href="@{/contactos/{id}(id=${contacto.id})}">Cancelar</a>
+            </form>
+        </div>
+    </section>
+</div>
 </body>
 </html>

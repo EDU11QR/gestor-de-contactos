@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrlPattern;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.gestordecontactos.dto.TipoContacto;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -27,10 +28,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -106,6 +110,23 @@ class ContactoEdicionTests {
                 .andExpect(content().string(containsString("ana@ejemplo.com")));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"CLIENTE", "PROVEEDOR", "AMBOS"})
+    void formularioMuestraClasificacionGuardadaSeleccionada(String tipo) throws Exception {
+        String dni = dniNuevo();
+        Long id = insertarContacto(dni, "ana@ejemplo.com", tipo);
+
+        String cuerpo = mockMvc.perform(get("/contactos/{id}/editar", id).with(usuario()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        for (TipoContacto opcion : TipoContacto.values()) {
+            assertTrue(cuerpo.contains("value=\"" + opcion.name() + "\""),
+                    "La opción " + opcion + " no está disponible");
+        }
+        assertOpcionSeleccionada(cuerpo, tipo);
+    }
+
     @Test
     void formularioMuestraTodosLosTelefonosYCorreosYControlesDeFilas() throws Exception {
         String dni = dniNuevo();
@@ -153,6 +174,37 @@ class ContactoEdicionTests {
         assertEquals(2, correos.size());
         assertTrue(correos.contains("nuevo@ejemplo.com"));
         assertTrue(correos.contains("segunda@ejemplo.com"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"CLIENTE", "PROVEEDOR", "AMBOS"})
+    void actualizacionModificaClasificacionYPersisteEnMysql(String tipoDestino) throws Exception {
+        String dni = dniNuevo();
+        String tipoInicial = "CLIENTE".equals(tipoDestino) ? "PROVEEDOR" : "CLIENTE";
+        Long id = insertarContacto(dni, "ana@ejemplo.com", tipoInicial);
+
+        mockMvc.perform(solicitudConClasificacion(id, dni, "987654329", "ana@ejemplo.com", tipoDestino)
+                        .with(usuario()).with(csrf()))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrlPattern("/contactos/*"));
+
+        assertEquals(tipoDestino, jdbcTemplate.queryForObject(
+                "SELECT tipo_contacto FROM contactos WHERE id_contacto = ?", String.class, id));
+    }
+
+    @Test
+    void actualizacionRechazaClasificacionVacia() throws Exception {
+        String dni = dniNuevo();
+        Long id = insertarContacto(dni, "ana@ejemplo.com", "CLIENTE");
+
+        mockMvc.perform(solicitudConClasificacion(id, dni, "987654321", "ana@ejemplo.com", "")
+                        .with(usuario()).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("El tipo de contacto es obligatorio")))
+                .andExpect(content().string(containsString("Seleccione...")));
+
+        assertEquals("CLIENTE", jdbcTemplate.queryForObject(
+                "SELECT tipo_contacto FROM contactos WHERE id_contacto = ?", String.class, id));
     }
 
     @Test
@@ -369,6 +421,14 @@ class ContactoEdicionTests {
                 String.class, id);
     }
 
+    private void assertOpcionSeleccionada(String cuerpo, String tipo) {
+        Pattern patron = Pattern.compile(
+                "<option\\b(?=[^>]*\\bvalue=\"" + tipo + "\")(?=[^>]*\\bselected(?:=\"[^\"]*\")?)[^>]*>",
+                Pattern.CASE_INSENSITIVE);
+        assertTrue(patron.matcher(cuerpo).find(),
+                "La opción " + tipo + " no está seleccionada");
+    }
+
     private long contarArchivos() throws IOException {
         if (!Files.exists(directorioFotos())) {
             return 0;
@@ -380,11 +440,16 @@ class ContactoEdicionTests {
 
     private MockHttpServletRequestBuilder solicitudSinFoto(Long id, String dni, String telefono,
             String correo) {
+        return solicitudConClasificacion(id, dni, telefono, correo, "PROVEEDOR");
+    }
+
+    private MockHttpServletRequestBuilder solicitudConClasificacion(Long id, String dni,
+            String telefono, String correo, String tipoContacto) {
         return multipart("/contactos/{id}/editar", id)
                 .param("nombres", " Ana Editada ")
                 .param("apellidos", " López ")
                 .param("dni", dni)
-                .param("tipoContacto", "PROVEEDOR")
+                .param("tipoContacto", tipoContacto)
                 .param("telefonos[0].numero", telefono)
                 .param("correosElectronicos[0].direccion", correo);
     }

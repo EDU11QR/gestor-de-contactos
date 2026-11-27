@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 import com.gestordecontactos.dto.ContactoBusquedaForm;
 import com.gestordecontactos.dto.ContactoListadoDto;
 import com.gestordecontactos.entity.Contacto;
+import com.gestordecontactos.exception.IntegridadExceptionTranslator;
 import com.gestordecontactos.repository.ContactoRepository;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +38,7 @@ class ContactoServiceListadoTests {
     void inicializar() {
         contactoRepository = mock(ContactoRepository.class);
         fotoService = mock(FotoService.class);
-        service = new ContactoService(contactoRepository, fotoService);
+        service = new ContactoService(contactoRepository, fotoService, new IntegridadExceptionTranslator());
     }
 
     @Test

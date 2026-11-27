@@ -1,6 +1,7 @@
 package com.gestordecontactos.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -8,6 +9,7 @@ import com.gestordecontactos.config.FotoProperties;
 import com.gestordecontactos.dto.ContactoEdicionForm;
 import com.gestordecontactos.dto.CorreoForm;
 import com.gestordecontactos.dto.TelefonoForm;
+import com.gestordecontactos.exception.ConflictoIntegridadException;
 import com.gestordecontactos.service.ContactoService;
 import com.gestordecontactos.service.FotoService;
 import java.awt.image.BufferedImage;
@@ -25,7 +27,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -128,8 +129,9 @@ class ContactoEdicionIntegridadTests {
         form.getCorreosElectronicos().set(0, new CorreoForm("nuevo@ejemplo.com"));
         form.getCorreosElectronicos().set(1, new CorreoForm("otra-nueva@ejemplo.com"));
 
-        assertThrows(DataIntegrityViolationException.class,
+        ConflictoIntegridadException ex = assertThrows(ConflictoIntegridadException.class,
                 () -> contactoService.actualizar(id, form));
+        assertNotNull(ex.getCause());
 
         assertEquals("Existente", jdbcTemplate.queryForObject(
                 "SELECT nombres FROM contactos WHERE id_contacto = ?", String.class, id));

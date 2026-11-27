@@ -170,6 +170,7 @@ public class ContactoController {
     private void prepararFormularioEdicion(Model model, Long id, ContactoEdicionForm form) {
         model.addAttribute("id", id);
         model.addAttribute("form", form);
+        model.addAttribute("tipos", TipoContacto.values());
         if (form.getTelefonos().isEmpty()) {
             form.getTelefonos().add(new TelefonoForm(""));
         }

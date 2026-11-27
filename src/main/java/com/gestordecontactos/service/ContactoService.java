@@ -12,11 +12,13 @@ import com.gestordecontactos.entity.Contacto;
 import com.gestordecontactos.entity.CorreoElectronico;
 import com.gestordecontactos.entity.Telefono;
 import com.gestordecontactos.exception.DniDuplicadoException;
+import com.gestordecontactos.exception.IntegridadExceptionTranslator;
 import com.gestordecontactos.exception.RecursoNoEncontradoException;
 import com.gestordecontactos.repository.ContactoRepository;
-import java.sql.SQLIntegrityConstraintViolationException;
+import jakarta.validation.ConstraintViolationException;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.Supplier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -34,10 +36,13 @@ public class ContactoService {
 
     private final ContactoRepository contactoRepository;
     private final FotoService fotoService;
+    private final IntegridadExceptionTranslator traductor;
 
-    public ContactoService(ContactoRepository contactoRepository, FotoService fotoService) {
+    public ContactoService(ContactoRepository contactoRepository, FotoService fotoService,
+            IntegridadExceptionTranslator traductor) {
         this.contactoRepository = contactoRepository;
         this.fotoService = fotoService;
+        this.traductor = traductor;
     }
 
     @Transactional
@@ -70,14 +75,7 @@ public class ContactoService {
             contacto.addCorreoElectronico(correo);
         }
 
-        try {
-            return contactoRepository.save(contacto).getId();
-        } catch (DataIntegrityViolationException ex) {
-            if (esDniDuplicado(ex)) {
-                throw new DniDuplicadoException(dni);
-            }
-            throw ex;
-        }
+        return ejecutarConTraduccionIntegridad(() -> contactoRepository.save(contacto).getId(), dni);
     }
 
     @Transactional(readOnly = true)
@@ -157,14 +155,10 @@ public class ContactoService {
             contacto.addCorreoElectronico(correo);
         }
 
-        try {
+        ejecutarConTraduccionIntegridad(() -> {
             contactoRepository.saveAndFlush(contacto);
-        } catch (DataIntegrityViolationException ex) {
-            if (esDniDuplicado(ex)) {
-                throw new DniDuplicadoException(dni);
-            }
-            throw ex;
-        }
+            return null;
+        }, dni);
 
         if (foto != null && !archivoAnterior.equals(contacto.getFotoArchivo())
                 && !contactoRepository.existsByFotoArchivo(archivoAnterior)) {
@@ -221,17 +215,14 @@ public class ContactoService {
         }
     }
 
-    private boolean esDniDuplicado(DataIntegrityViolationException ex) {
-        Throwable causa = ex;
-        while (causa != null) {
-            if (causa instanceof SQLIntegrityConstraintViolationException
-                    && causa.getMessage() != null
-                    && causa.getMessage().contains("uq_contactos_dni")) {
-                return true;
-            }
-            causa = causa.getCause();
+    private <T> T ejecutarConTraduccionIntegridad(Supplier<T> operacion, String dni) {
+        try {
+            return operacion.get();
+        } catch (DataIntegrityViolationException ex) {
+            throw traductor.traducirIntegridad(ex, dni);
+        } catch (ConstraintViolationException ex) {
+            throw traductor.traducirValidacion(ex);
         }
-        return false;
     }
 
     private String normalizarTelefono(String numero) {
