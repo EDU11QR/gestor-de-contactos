@@ -7,9 +7,16 @@ import com.gestordecontactos.dto.ContactoForm;
 import com.gestordecontactos.dto.CorreoForm;
 import com.gestordecontactos.dto.TelefonoForm;
 import com.gestordecontactos.dto.TipoContacto;
+import com.gestordecontactos.exception.ConfirmacionInvalidaException;
 import com.gestordecontactos.exception.DniDuplicadoException;
+import com.gestordecontactos.exception.FalloConsumoConfirmacionException;
+import com.gestordecontactos.exception.FalloEliminacionContactoException;
+import com.gestordecontactos.exception.FalloPersistenciaConfirmacionException;
 import com.gestordecontactos.exception.FotoInvalidaException;
+import com.gestordecontactos.exception.RecursoNoEncontradoException;
 import com.gestordecontactos.service.ContactoService;
+import com.gestordecontactos.service.EliminacionContactoService;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -19,16 +26,23 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 @Controller
 @RequestMapping("/contactos")
 public class ContactoController {
 
-    private final ContactoService contactoService;
+    private static final String MENSAJE_ERROR_ELIMINACION =
+            "No se pudo completar la eliminación. Inténtelo nuevamente.";
 
-    public ContactoController(ContactoService contactoService) {
+    private final ContactoService contactoService;
+    private final EliminacionContactoService eliminacionContactoService;
+
+    public ContactoController(ContactoService contactoService,
+            EliminacionContactoService eliminacionContactoService) {
         this.contactoService = contactoService;
+        this.eliminacionContactoService = eliminacionContactoService;
     }
 
     @GetMapping
@@ -100,6 +114,41 @@ public class ContactoController {
         return "contactos/editar";
     }
 
+    @GetMapping("/{id}/eliminar")
+    public String confirmarEliminacion(@PathVariable Long id, Model model, HttpSession sesion,
+            RedirectAttributes redirectAttributes) {
+        ContactoDetalleDto contacto;
+        String token;
+        try {
+            contacto = contactoService.obtenerDetalle(id);
+            token = eliminacionContactoService.generar(id, sesion.getId());
+        } catch (RecursoNoEncontradoException | ConfirmacionInvalidaException
+                | FalloPersistenciaConfirmacionException ex) {
+            redirectAttributes.addFlashAttribute("errorEliminacion", MENSAJE_ERROR_ELIMINACION);
+            return "redirect:/contactos";
+        }
+
+        model.addAttribute("contacto", contacto);
+        model.addAttribute("token", token);
+        return "contactos/eliminar";
+    }
+
+    @PostMapping("/{id}/eliminar")
+    public String eliminar(@PathVariable Long id,
+            @RequestParam(name = "token", required = false) String token,
+            HttpSession sesion, RedirectAttributes redirectAttributes) {
+        try {
+            eliminacionContactoService.eliminar(id, sesion.getId(), token);
+        } catch (ConfirmacionInvalidaException | FalloConsumoConfirmacionException
+                | FalloEliminacionContactoException ex) {
+            redirectAttributes.addFlashAttribute("errorEliminacion", MENSAJE_ERROR_ELIMINACION);
+            return "redirect:/contactos";
+        }
+
+        redirectAttributes.addFlashAttribute("eliminado", true);
+        return "redirect:/contactos";
+    }
+
     @GetMapping("/{id}")
     public String detalle(@PathVariable Long id, Model model) {
         ContactoDetalleDto contacto = contactoService.obtenerDetalle(id);
@@ -120,13 +169,12 @@ public class ContactoController {
 
     private void prepararFormularioEdicion(Model model, Long id, ContactoEdicionForm form) {
         model.addAttribute("id", id);
+        model.addAttribute("form", form);
         if (form.getTelefonos().isEmpty()) {
             form.getTelefonos().add(new TelefonoForm(""));
         }
         if (form.getCorreosElectronicos().isEmpty()) {
             form.getCorreosElectronicos().add(new CorreoForm(""));
         }
-        model.addAttribute("form", form);
-        model.addAttribute("tipos", TipoContacto.values());
     }
 }

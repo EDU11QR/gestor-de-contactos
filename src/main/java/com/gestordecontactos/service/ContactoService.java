@@ -172,6 +172,18 @@ public class ContactoService {
         }
     }
 
+    @Transactional
+    public void eliminar(Long id) {
+        Contacto contacto = contactoRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Contacto no encontrado"));
+
+        String archivoAnterior = contacto.getFotoArchivo();
+        contactoRepository.delete(contacto);
+        if (archivoAnterior != null && !archivoAnterior.isBlank()) {
+            fotoService.eliminarTrasConfirmacion(archivoAnterior);
+        }
+    }
+
     @Transactional(readOnly = true)
     public Page<ContactoListadoDto> listar(ContactoBusquedaForm filtro) {
         String termino = filtro.getTermino() == null ? "" : filtro.getTermino().trim();

@@ -1,5 +1,6 @@
 package com.gestordecontactos;
 
+import com.gestordecontactos.repository.ConfirmacionEliminacionRepository;
 import com.gestordecontactos.repository.ContactoRepository;
 import com.gestordecontactos.repository.UsuarioRepository;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,9 @@ class GestorDeContactosApplicationTests {
 
     @MockitoBean
     private ContactoRepository contactoRepository;
+
+    @MockitoBean
+    private ConfirmacionEliminacionRepository confirmacionEliminacionRepository;
 
     @Test
     void contextLoads() {
