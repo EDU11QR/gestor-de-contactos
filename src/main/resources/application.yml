@@ -29,9 +29,9 @@ server:
         name: ${SERVER_SERVLET_SESSION_COOKIE_NAME:GESTOR_SESSION}
         max-age: ${SERVER_SERVLET_SESSION_COOKIE_MAX_AGE:7d}
         http-only: ${SERVER_SERVLET_SESSION_COOKIE_HTTP_ONLY:true}
-        secure: ${SERVER_SERVLET_SESSION_COOKIE_SECURE:false}
+        secure: ${SERVER_SERVLET_SESSION_COOKIE_SECURE:true}
         same-site: ${SERVER_SERVLET_SESSION_COOKIE_SAME_SITE:lax}
-  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:none}
+  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:framework}
 app:
   provisioning:
     email: ${APP_PROVISIONING_EMAIL:}

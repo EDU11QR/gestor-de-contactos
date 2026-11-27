@@ -50,6 +50,7 @@ import org.springframework.util.MultiValueMap;
         "spring.session.store-type=jdbc",
         "spring.session.jdbc.table-name=SPRING_SESSION",
         "spring.session.jdbc.initialize-schema=never",
+        "server.servlet.session.cookie.secure=false",
         "app.fotos.dir=${java.io.tmpdir}/gestor-contactos-test-fotos",
         "app.provisioning.email=",
         "app.provisioning.password=",

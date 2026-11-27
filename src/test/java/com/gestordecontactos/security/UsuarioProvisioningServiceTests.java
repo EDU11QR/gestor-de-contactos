@@ -1,6 +1,8 @@
 package com.gestordecontactos.security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -26,14 +28,14 @@ class UsuarioProvisioningServiceTests {
     void creaUsuarioNormalizadoConHashBCrypt() {
         when(usuarioRepository.findByEmail("usuario@ejemplo.com")).thenReturn(Optional.empty());
 
-        service.provisionar(" USUARIO@Ejemplo.COM ", "Clave123!", " Usuario ");
+        service.provisionar(" USUARIO@Ejemplo.COM ", "ClaveSegura123!", " Usuario ");
 
         ArgumentCaptor<Usuario> captor = ArgumentCaptor.forClass(Usuario.class);
         verify(usuarioRepository).save(captor.capture());
         Usuario guardado = captor.getValue();
         assertEquals("usuario@ejemplo.com", guardado.getEmail());
         assertEquals("Usuario", guardado.getNombre());
-        assertTrue(encoder.matches("Clave123!", guardado.getPasswordHash()));
+        assertTrue(encoder.matches("ClaveSegura123!", guardado.getPasswordHash()));
     }
 
     @Test
@@ -51,6 +53,47 @@ class UsuarioProvisioningServiceTests {
         assertEquals("UsuarioOriginal", existente.getNombre());
         assertEquals(hashOriginal, existente.getPasswordHash());
         assertTrue(encoder.matches("ClaveOriginal1!", existente.getPasswordHash()));
+    }
+
+    @Test
+    void noReactivaUsuarioRevocadoAlAprovisionar() {
+        Usuario existente = usuario("usuario@ejemplo.com", "UsuarioOriginal", encoder.encode("ClaveOriginal1!"));
+        existente.setActivo(false);
+        when(usuarioRepository.findByEmail("usuario@ejemplo.com")).thenReturn(Optional.of(existente));
+
+        service.provisionar(" USUARIO@Ejemplo.COM ", "ClaveNueva123!", "Nombre Nuevo");
+
+        assertFalse(existente.isActivo());
+        verify(usuarioRepository, never()).save(any(Usuario.class));
+    }
+
+    @Test
+    void rechazaEmailSuperiorACienCaracteres() {
+        String emailLargo = "a".repeat(101);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.provisionar(emailLargo, "ClaveSegura123!", "Usuario"));
+
+        verify(usuarioRepository, never()).findByEmail(any());
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void rechazaContrasenaCorta() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.provisionar("usuario@ejemplo.com", "Clave123!", "Usuario"));
+
+        verify(usuarioRepository, never()).findByEmail(any());
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void rechazaContrasenaDerivadaDelCorreo() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.provisionar("usuario@ejemplo.com", "usuario@ejemplo.com", "Usuario"));
+
+        verify(usuarioRepository, never()).findByEmail(any());
+        verify(usuarioRepository, never()).save(any());
     }
 
     private Usuario usuario(String email, String nombre, String hash) {

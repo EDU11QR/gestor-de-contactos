@@ -13,7 +13,7 @@ public class SessionConfig {
     public CookieSerializer cookieSerializer(
             @Value("${server.servlet.session.cookie.name}") String cookieName,
             @Value("${server.servlet.session.cookie.http-only:true}") boolean httpOnly,
-            @Value("${server.servlet.session.cookie.secure:false}") boolean secure,
+            @Value("${server.servlet.session.cookie.secure:true}") boolean secure,
             @Value("${server.servlet.session.cookie.same-site:lax}") String sameSite) {
         DefaultCookieSerializer serializer = new DefaultCookieSerializer();
         serializer.setCookieName(cookieName);

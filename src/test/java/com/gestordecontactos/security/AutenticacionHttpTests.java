@@ -18,17 +18,25 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.gestordecontactos.entity.Usuario;
 import com.gestordecontactos.repository.ConfirmacionEliminacionRepository;
 import com.gestordecontactos.repository.ContactoRepository;
+import com.gestordecontactos.repository.SesionRevocacionJdbcRepository;
+import com.gestordecontactos.repository.SesionRollbackJdbcRepository;
 import com.gestordecontactos.repository.UsuarioRepository;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -51,6 +59,12 @@ class AutenticacionHttpTests {
 
     @MockitoBean
     private ConfirmacionEliminacionRepository confirmacionEliminacionRepository;
+
+    @MockitoBean
+    private SesionRevocacionJdbcRepository sesionRevocacionRepository;
+
+    @MockitoBean
+    private SesionRollbackJdbcRepository sesionRollbackRepository;
 
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
@@ -107,6 +121,19 @@ class AutenticacionHttpTests {
         mockMvc.perform(formLogin()
                         .user("usuario@ejemplo.com")
                         .password("Incorrecta"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/login?error"));
+    }
+
+    @Test
+    void loginDeUsuarioInactivoRedirigeConError() throws Exception {
+        Usuario usuario = usuario(encoder.encode("Clave123!"));
+        usuario.setActivo(false);
+        when(usuarioRepository.findByEmail("usuario@ejemplo.com")).thenReturn(Optional.of(usuario));
+
+        mockMvc.perform(formLogin()
+                        .user("usuario@ejemplo.com")
+                        .password("Clave123!"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/login?error"));
     }
@@ -175,5 +202,31 @@ class AutenticacionHttpTests {
         usuario.setNombre("Usuario");
         usuario.setPasswordHash(hash);
         return usuario;
+    }
+
+    @TestConfiguration
+    static class ConfiguracionTransaccional {
+
+        @Bean
+        PlatformTransactionManager platformTransactionManager() {
+            return new AbstractPlatformTransactionManager() {
+                @Override
+                protected Object doGetTransaction() {
+                    return new Object();
+                }
+
+                @Override
+                protected void doBegin(Object transaction, TransactionDefinition definition) {
+                }
+
+                @Override
+                protected void doCommit(DefaultTransactionStatus status) {
+                }
+
+                @Override
+                protected void doRollback(DefaultTransactionStatus status) {
+                }
+            };
+        }
     }
 }

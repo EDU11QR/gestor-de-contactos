@@ -16,6 +16,7 @@ import org.hibernate.annotations.Check;
 @Check(name = "chk_usuarios_email_no_vacio", constraints = "CHAR_LENGTH(TRIM(email)) > 0")
 @Check(name = "chk_usuarios_password_hash_no_vacio", constraints = "CHAR_LENGTH(password_hash) > 0")
 @Check(name = "chk_usuarios_nombre_no_vacio", constraints = "CHAR_LENGTH(TRIM(nombre)) > 0")
+@Check(name = "chk_usuarios_activo", constraints = "activo IN (0, 1)")
 public class Usuario {
 
     @Id
@@ -31,6 +32,9 @@ public class Usuario {
 
     @Column(name = "nombre", nullable = false, length = 255)
     private String nombre;
+
+    @Column(name = "activo", nullable = false)
+    private boolean activo = true;
 
     public Usuario() {
     }
@@ -65,5 +69,13 @@ public class Usuario {
 
     public void setNombre(String nombre) {
         this.nombre = nombre;
+    }
+
+    public boolean isActivo() {
+        return activo;
+    }
+
+    public void setActivo(boolean activo) {
+        this.activo = activo;
     }
 }

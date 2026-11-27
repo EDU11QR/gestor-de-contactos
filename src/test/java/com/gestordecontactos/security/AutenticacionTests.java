@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.gestordecontactos.entity.Usuario;
@@ -19,11 +20,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.CredentialsContainer;
 import org.springframework.security.core.context.SecurityContextImpl;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 class AutenticacionTests {
@@ -62,6 +65,31 @@ class AutenticacionTests {
 
         assertThrows(BadCredentialsException.class, () -> authenticationManager().authenticate(
                 new UsernamePasswordAuthenticationToken("ausente@ejemplo.com", "Clave123!")));
+    }
+
+    @Test
+    void rechazaCorreoSuperiorACienCaracteresConMensajeGenerico() {
+        UsuarioUserDetailsService servicio = new UsuarioUserDetailsService(usuarioRepository);
+
+        UsernameNotFoundException ex = assertThrows(UsernameNotFoundException.class,
+                () -> servicio.loadUserByUsername("a".repeat(101)));
+
+        assertEquals("Credenciales inválidas", ex.getMessage());
+        verifyNoInteractions(usuarioRepository);
+    }
+
+    @Test
+    void rechazaUsuarioInactivoConMensajeGenerico() {
+        Usuario usuario = usuario(encoder.encode("Clave123!"));
+        usuario.setActivo(false);
+        when(usuarioRepository.findByEmail("usuario@ejemplo.com")).thenReturn(Optional.of(usuario));
+
+        UsuarioUserDetailsService servicio = new UsuarioUserDetailsService(usuarioRepository);
+        DisabledException ex = assertThrows(DisabledException.class,
+                () -> servicio.loadUserByUsername(" USUARIO@Ejemplo.COM "));
+
+        assertEquals("Credenciales inválidas", ex.getMessage());
+        verify(usuarioRepository).findByEmail("usuario@ejemplo.com");
     }
 
     @Test

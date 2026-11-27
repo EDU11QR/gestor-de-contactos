@@ -93,7 +93,7 @@ class SesionJdbcConMysqlTests {
 
         Cookie cookieSesion = resultadoLogin.getResponse().getCookie("GESTOR_SESSION");
         assertNotNull(cookieSesion);
-        String idSesion = new String(Base64.getUrlDecoder().decode(cookieSesion.getValue()), StandardCharsets.UTF_8);
+        String idSesion = new String(Base64.getDecoder().decode(cookieSesion.getValue()), StandardCharsets.UTF_8);
 
         assertEquals(email, jdbcTemplate.queryForObject(
                 "SELECT PRINCIPAL_NAME FROM SPRING_SESSION WHERE SESSION_ID = ?", String.class, idSesion));
