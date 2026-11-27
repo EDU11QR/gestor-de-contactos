@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class UsuarioProvisioningService {
 
-    private static final int LONGITUD_MINIMA_PASSWORD = 12;
+    private static final int LONGITUD_MINIMA_PASSWORD = 8;
 
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
